@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8.3)
-project(viodom)
+project(visor)
 
 find_package(catkin REQUIRED COMPONENTS
   roscpp
@@ -31,8 +31,15 @@ include_directories(
 #link_directories(${OpenCV_LIB_DIR})
 
 add_executable(viodom_node src/viodom_node.cpp)
+add_executable(slam_node src/slam_node.cpp)
 
 target_link_libraries(viodom_node
+   ${catkin_LIBRARIES}
+   ${OpenCV_LIBRARIES}
+   ${Eigen_LIBRARIES}
+)
+
+target_link_libraries(slam_node
    ${catkin_LIBRARIES}
    ${OpenCV_LIBRARIES}
    ${Eigen_LIBRARIES}

@@ -1,0 +1,34 @@
+<!--
+Manas Mehta, F. Caballero and F.J. Perez-Grau
+Files tuned for Carnegie Robotics Multisense Head
+-->
+<launch>
+
+  <node name="viodom_node" type="viodom_node" pkg="visor" output="screen" >
+    <param name="left_cam" value="/multisense/left" />
+    <param name="right_cam" value="/multisense/right" />
+    <param name="imu_topic" value="/multisense/imu/imu_data" />
+    <param name="downsampling" value="2" />
+    <param name="publish_pc" value="true" />
+    <param name="max_features" value="100" />
+    <param name="flow_threshold" value="10.0" />
+    <param name="min_matches" value="5" />
+    <param name="src_frame_id" value="world" />
+    <param name="tgt_frame_id" value="base_link" />
+    <param name="display_images" value="false" />
+  </node>
+  <node name="slam_node" type="slam_node" pkg="visor" output="screen" >
+    <param name="left_cam" value="/multisense/left" />
+    <param name="right_cam" value="/multisense/right" />
+    <param name="imu_topic" value="/multisense/imu/imu_data" />
+    <param name="downsampling" value="2" />
+    <param name="publish_pc" value="true" />
+    <param name="max_features" value="100" />
+    <param name="flow_threshold" value="10.0" />
+    <param name="min_matches" value="5" />
+    <param name="src_frame_id" value="world" />
+    <param name="tgt_frame_id" value="base_link" />
+    <param name="display_images" value="false" />
+  </node>
+
+</launch>

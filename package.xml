@@ -1,8 +1,9 @@
 <?xml version="1.0"?>
 <package>
-  <name>viodom</name>
+  <name>visor</name>
   <version>0.0.0</version>
-  <description>Visual odometry package, currently supporting stereo camera + IMU</description>
+  <description>Visual EKF Slam based on viodom</description>
+  <author email="mmehta@wpi.edu">Manas Mehta</author>
   <author email="fcaballero@us.es">Fernando Caballero</author>
   <author email="fjperezgrau@gmail.com">Francisco J. Perez Grau</author>
   <maintainer email="fcaballero@us.es">Fernando Caballero</maintainer>

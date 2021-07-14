@@ -54,7 +54,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 // Dynamic Reconfigure Parameters
 #include <dynamic_reconfigure/server.h>
-#include <viodom/stereodomConfig.h>
+#include <visor/stereodomConfig.h>
 
 #include "imufilter.hpp"
 #include "robustmatcher.hpp"

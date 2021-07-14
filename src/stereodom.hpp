@@ -734,7 +734,7 @@ private:
 
     /** @brief Dynamic reconfigure callback
      */
-    void dynRecCallback(viodom::stereodomConfig& config, uint32_t level)
+    void dynRecCallback(visor::stereodomConfig& config, uint32_t level)
     {
         ROS_INFO("Reconfiguring");
         downsampling_ = config.downsampling;
@@ -802,8 +802,8 @@ private:
 
     ImuFilter imu_; /**< IMU processor*/
 
-    dynamic_reconfigure::Server<viodom::stereodomConfig> dyn_rec_server_; /**< Dynamic reconfigure server*/
-    dynamic_reconfigure::Server<viodom::stereodomConfig>::CallbackType dyn_rec_f_; /**< Dynamic reconfigure callback*/
+    dynamic_reconfigure::Server<visor::stereodomConfig> dyn_rec_server_; /**< Dynamic reconfigure server*/
+    dynamic_reconfigure::Server<visor::stereodomConfig>::CallbackType dyn_rec_f_; /**< Dynamic reconfigure callback*/
 };
 
 #endif

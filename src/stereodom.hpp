@@ -86,9 +86,9 @@ public:
     Stereodom(std::string& nodeName, std::string& leftCam, std::string& rightCam, std::string& imuTopic)
         : imu_(0.005, imuTopic, 3.0)
         , it_(nh_)
-        , leftImgSubs_(it_, leftCam + "/image_raw", 1)
+        , leftImgSubs_(it_, leftCam + "/image_rect", 1)
         , leftInfoSubs_(nh_, leftCam + "/camera_info", 1)
-        , rightImgSubs_(it_, rightCam + "/image_raw", 1)
+        , rightImgSubs_(it_, rightCam + "/image_rect", 1)
         , rightInfoSubs_(nh_, rightCam + "/camera_info", 1)
         , stereoSync_(leftImgSubs_, rightImgSubs_, 10)
         , cameraInfoSync_(leftInfoSubs_, rightInfoSubs_, 10)
@@ -453,7 +453,7 @@ private:
 
         // Solve PnP using RANSAC and EPNP algorithm
         try {
-            cv::solvePnPRansac(points3d, projections, KL_, cv::Mat(), rot2, T, true, 150, 2, 100, inliers, CV_EPNP);
+            cv::solvePnPRansac(points3d, projections, KL_, cv::Mat(), rot2, T, true, 150, 2, 0.99, inliers, CV_EPNP);
             cv::Rodrigues(rot2, R);
         } catch (std::exception e) {
             ROS_ERROR("PnP error!");
@@ -626,10 +626,12 @@ private:
             if (points3d.size() >= minMatches_) {
                 // Compute PnP between previous key-frame and current frame
                 tf::Transform deltaT;
-                if (!leftPnP(points3d, projections, deltaT))
+                if (!leftPnP(points3d, projections, deltaT)) {
                     return;
+                }
 
                 odomC_ = odomCkf_ * deltaT.inverse();
+                
                 imgL.copyTo(imgC_);
                 odom_ = camera2baselink(odomC_);
 

@@ -5,9 +5,9 @@ Files tuned for EuRoC dataset 'catec-2016-01-27-12-30-41.bag'
 <launch>
 
   <node name="viodom_node" type="viodom_node" pkg="viodom" output="screen" >
-    <param name="left_cam" value="/euroc5/cam2" />
-    <param name="right_cam" value="/euroc5/cam0" />
-    <param name="imu_topic" value="/euroc5/imu0" />
+    <param name="left_cam" value="/multisense/left" />
+    <param name="right_cam" value="/multisense/right" />
+    <param name="imu_topic" value="/multisense/imu/imu_data" />
     <param name="downsampling" value="2" />
     <param name="publish_pc" value="true" />
     <param name="max_features" value="800" />

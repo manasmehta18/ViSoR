@@ -135,6 +135,12 @@ public:
 		// }
 		// else
 		// 	return false;
+
+        init_ = true;
+        ROS_INFO("SLAM EKF INITIALIZED");
+
+
+        return true;
 	}	
 	
 //     /** EKF prediction stage based on gyro information
@@ -335,6 +341,10 @@ public:
 			
 		// 	return;
 		// }	
+
+        if(!init_) {
+            initialize();
+        }
 
         if(msg) {
             ROS_INFO("POSE DATA RECEIVED");

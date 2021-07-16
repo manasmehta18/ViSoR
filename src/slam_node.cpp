@@ -12,7 +12,7 @@
 
 int main(int argc, char **argv)
 {
-	std::string left_cam, right_cam, imu_topic;
+	std::string left_cam, right_cam, pose_topic;
 	ros::init(argc, argv, "slam_node");  
   
 	// Read node parameters
@@ -23,14 +23,14 @@ int main(int argc, char **argv)
 		left_cam.erase(left_cam.length()-1, 1);
 	if(!lnh.getParam("right_cam", right_cam))
 		right_cam = "/stereo/right";
-	if(!lnh.getParam("imu_topic", imu_topic))
-        imu_topic = "/imu";
+	if(!lnh.getParam("pose_topic", pose_topic))
+        pose_topic = "/pose";
 	if(right_cam[right_cam.length()-1] == '/')
 		right_cam.erase(right_cam.length()-1, 1);
 
 	// Visual odometry instance
 	std::string node_name = "slam_node";
-    EkfSlam ekfSlam(node_name, left_cam, right_cam, imu_topic);
+    EkfSlam ekfSlam(node_name, left_cam, right_cam, pose_topic);
 	
 	// Spin for ever
 	ros::spin();

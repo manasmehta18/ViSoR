@@ -29,14 +29,15 @@ public:
 	
     /** @brief Constructor
      * @param T Prediction period (seconds)
-     * @param imuTopic Name of the IMU data topic
+     * @param poseTopic Name of the IMU data topic
      * @param calibTime Initial calibration time (seconds)
      */
-    EkfSlam(std::string& nodeName, std::string& leftCam, std::string& rightCam, std::string& imuTopic)
-	{
-        // init_ = false;
+    EkfSlam(std::string& nodeName, std::string& leftCam, std::string& rightCam, std::string& poseTopic) {
+        init_ = false;
         // T_ = T;
         // T2_ = T*T;
+
+        SV_ = std::vector<double>(403);
 
 		// IMU EKF parameters
         // accDev_ = 0.006;//0.001
@@ -48,92 +49,93 @@ public:
         // magXo_ = 0.0;
         // magYo_ = 0.0;
         // magZo_ = 0.0;
-        // biaDev_ = 0.00001;//0.000001;
-        // biaTh_ = 0.005; //0.001;
+        biaDev_ = 0.00001;//0.000001;
+        biaTh_ = 0.005; //0.001;
 		
         // Stereodom odom(nodeName, leftCam, rightCam, imuTopic);
 
-        // SV_ = std::vector<double>(203);
+        
 
-        // // Setup IMU data subscriber
-        // sub_ = nh_.subscribe(imuTopic, 10, &ImuFilter::imuDataCallback, this);
+        // Setup pose data subscriber
+        poseSub_ = nh_.subscribe(poseTopic, 10, &EkfSlam::poseDataCallback, this);
+
+        posePub_ = nh_.advertise<geometry_msgs::TransformStamped>(nodeName + "/pose", 1);
 	}
 
 	
-//     /** @brief Initialize EKF
-//      * Input: vector of sensor_msgs::Imu
-//      * The user must continue calling this function with new gyro data until it returns true
-//      */
-// 	bool initialize(void)
-// 	{
-// 		double gx_m, gy_m, gz_m, gx_m2, gy_m2, gz_m2, gx_d, gy_d, gz_d; 
+    /** @brief Initialize EKF
+     * Input: vector of sensor_msgs::Imu
+     * The user must continue calling this function with new gyro data until it returns true
+     */
+	bool initialize(void) {
+		// double gx_m, gy_m, gz_m, gx_m2, gy_m2, gz_m2, gx_d, gy_d, gz_d; 
 		
-// 		// Compute mean value and mean square
-// 		gx_m = gy_m = gz_m = gx_m2 = gy_m2 = gz_m2 = 0.0;
-//         for(int i = 0; i < (int)calibData_.size(); i++)
-// 		{
-//             gx_m += calibData_[i].angular_velocity.x;
-//             gy_m += calibData_[i].angular_velocity.y;
-//             gz_m += calibData_[i].angular_velocity.z;
-//             gx_m2 += calibData_[i].angular_velocity.x*calibData_[i].angular_velocity.x;
-//             gy_m2 += calibData_[i].angular_velocity.y*calibData_[i].angular_velocity.y;
-//             gz_m2 += calibData_[i].angular_velocity.z*calibData_[i].angular_velocity.z;
-// 		}
-//         gx_m = gx_m/(double)calibData_.size();
-//         gy_m = gy_m/(double)calibData_.size();
-//         gz_m = gz_m/(double)calibData_.size();
-//         gx_m2 = gx_m2/(double)calibData_.size();
-//         gy_m2 = gy_m2/(double)calibData_.size();
-//         gz_m2 = gz_m2/(double)calibData_.size();
-// 		//std::cout << "gxM: " << gx_m << ", gyM: " << gy_m << ", gzM: " << gz_m << std::endl;
+		// // Compute mean value and mean square
+		// gx_m = gy_m = gz_m = gx_m2 = gy_m2 = gz_m2 = 0.0;
+        // for(int i = 0; i < (int)calibData_.size(); i++)
+		// {
+        //     gx_m += calibData_[i].angular_velocity.x;
+        //     gy_m += calibData_[i].angular_velocity.y;
+        //     gz_m += calibData_[i].angular_velocity.z;
+        //     gx_m2 += calibData_[i].angular_velocity.x*calibData_[i].angular_velocity.x;
+        //     gy_m2 += calibData_[i].angular_velocity.y*calibData_[i].angular_velocity.y;
+        //     gz_m2 += calibData_[i].angular_velocity.z*calibData_[i].angular_velocity.z;
+		// }
+        // gx_m = gx_m/(double)calibData_.size();
+        // gy_m = gy_m/(double)calibData_.size();
+        // gz_m = gz_m/(double)calibData_.size();
+        // gx_m2 = gx_m2/(double)calibData_.size();
+        // gy_m2 = gy_m2/(double)calibData_.size();
+        // gz_m2 = gz_m2/(double)calibData_.size();
+		// //std::cout << "gxM: " << gx_m << ", gyM: " << gy_m << ", gzM: " << gz_m << std::endl;
 		
-// 		// Compute standar deviation of gyros
-// 		gx_d = sqrt(gx_m2-gx_m*gx_m);
-// 		gy_d = sqrt(gy_m2-gy_m*gy_m);
-// 		gz_d = sqrt(gz_m2-gz_m*gz_m);
-// 		//std::cout << "gxDev: " << gx_d << ", gyDev: " << gy_d << ", gzDev: " << gz_d << std::endl;
+		// // Compute standar deviation of gyros
+		// gx_d = sqrt(gx_m2-gx_m*gx_m);
+		// gy_d = sqrt(gy_m2-gy_m*gy_m);
+		// gz_d = sqrt(gz_m2-gz_m*gz_m);
+		// //std::cout << "gxDev: " << gx_d << ", gyDev: " << gy_d << ", gzDev: " << gz_d << std::endl;
 		
-// 		// Initalize compass calibration
-//         magCal_[0] = magXs_; magCal_[1] = magYs_; magCal_[2] = magZs_;
-//         magCal_[3] = magXo_; magCal_[4] = magYo_; magCal_[5] = magZo_;
+		// // Initalize compass calibration
+        // magCal_[0] = magXs_; magCal_[1] = magYs_; magCal_[2] = magZs_;
+        // magCal_[3] = magXo_; magCal_[4] = magYo_; magCal_[5] = magZo_;
 		
-// 		// Initialize sensor variances
-//         accVar_[0] = accDev_*accDev_; 	accVar_[1] = accDev_*accDev_; 	accVar_[2] = accDev_*accDev_;		// Variance in g
-//         gyrVar_[0] = gyrDev_*gyrDev_; gyrVar_[1] = gyrDev_*gyrDev_; gyrVar_[2] = gyrDev_*gyrDev_;	// Variance in rad/s
-//         magVar_[0] = magDev_*magDev_; 	magVar_[1] = magDev_*magDev_; 	magVar_[2] = magDev_*magDev_;	// Variance in mGaus wth data normalized to 1
-//         biaVar_[0] = biaDev_*biaDev_; biaVar_[1] = biaDev_*biaDev_; biaVar_[2] = biaDev_*biaDev_;	// Variance in rad/s
+		// // Initialize sensor variances
+        // accVar_[0] = accDev_*accDev_; 	accVar_[1] = accDev_*accDev_; 	accVar_[2] = accDev_*accDev_;		// Variance in g
+        // gyrVar_[0] = gyrDev_*gyrDev_; gyrVar_[1] = gyrDev_*gyrDev_; gyrVar_[2] = gyrDev_*gyrDev_;	// Variance in rad/s
+        // magVar_[0] = magDev_*magDev_; 	magVar_[1] = magDev_*magDev_; 	magVar_[2] = magDev_*magDev_;	// Variance in mGaus wth data normalized to 1
+        // biaVar_[0] = biaDev_*biaDev_; biaVar_[1] = biaDev_*biaDev_; biaVar_[2] = biaDev_*biaDev_;	// Variance in rad/s
 		
-// 		// Initialize accelerometer threshold
-//         accTh_ = sqrt(accVar_[0]+accVar_[1]+accVar_[2]);
+		// // Initialize accelerometer threshold
+        // accTh_ = sqrt(accVar_[0]+accVar_[1]+accVar_[2]);
 		
-// 		// Initialize state vector x = [rx, ry, rz, gbx, gby, gbz]
-//         rx_ = ry_ = rz_ = 0.0;
-//         gbx_ = gx_m;
-//         gby_ = gy_m;
-//         gbz_ = gz_m;
+		// // Initialize state vector x = [rx, ry, rz, gbx, gby, gbz]
+        // rx_ = ry_ = rz_ = 0.0;
+        // gbx_ = gx_m;
+        // gby_ = gy_m;
+        // gbz_ = gz_m;
 		
-// 		// Initialize covariance matrix
-//         P_.setIdentity(6, 6);
-//         P_(0,0) = M_PI_2;
-//         P_(1,1) = M_PI_2;
-//         P_(2,2) = M_PI_2;
-//         P_(3,3) = 0.01*0.01;
-//         P_(4,4) = 0.01*0.01;
-//         P_(5,5) = 0.01*0.01;
-//         /*P_(3,3) = biaVar_[0];
-//         P_(4,4) = biaVar_[1];
-//         P_(5,5) = biaVar_[2];*/
+		// // Initialize covariance matrix
+        // P_.setIdentity(6, 6);
+        // P_(0,0) = M_PI_2;
+        // P_(1,1) = M_PI_2;
+        // P_(2,2) = M_PI_2;
+        // P_(3,3) = 0.01*0.01;
+        // P_(4,4) = 0.01*0.01;
+        // P_(5,5) = 0.01*0.01;
+        // /*P_(3,3) = biaVar_[0];
+        // P_(4,4) = biaVar_[1];
+        // P_(5,5) = biaVar_[2];*/
 		
-//         if(gx_d < biaTh_ && gy_d < biaTh_ && gz_d < biaTh_)
-// 		{
-//             init_ = true;
-//             ROS_INFO("IMU filter initialized");
+        // if(gx_d < biaTh_ && gy_d < biaTh_ && gz_d < biaTh_)
+		// {
+        //     init_ = true;
+        //     ROS_INFO("IMU filter initialized");
 		
-// 			return true;
-// 		}
-// 		else
-// 			return false;
-// 	}	
+		// 	return true;
+		// }
+		// else
+		// 	return false;
+	}	
 	
 //     /** EKF prediction stage based on gyro information
 //      * @param[in] gx Raw X gyro data (rad/s)
@@ -170,74 +172,6 @@ public:
 //         rz_ += T_*(gz - gbz_);
 														
 // 		return true; 
-// 	}
-	
-//     /** EKF update stage based on accelerometer information
-//      * @param[in] ax Raw X accelerometer data (g)
-//      * @param[in] ay Raw Y accelerometer data (g)
-//      * @param[in] az Raw Z accelerometer data (g)
-//      */
-// 	bool update(double ax, double ay, double az)
-// 	{
-// 		double crx, srx, cry, sry, mod, y[3];
-		
-// 		// Check initialization 
-//         if(!init_)
-// 			return false;
-		
-// 		// Pre-compute constants
-//         crx = cos(rx_);
-//         cry = cos(ry_);
-//         srx = sin(rx_);
-//         sry = sin(ry_);
-		
-// 		// Create measurement jacobian H
-// 		Eigen::Matrix<double, 3, 6> H;
-// 		H(0,0) = 0;			H(0,1) = cry;		H(0,2) = 0; H(0,3) = 0; H(0,4) = 0; H(0,5) = 0;
-// 		H(1,0) = -crx*cry; 	H(1,1) = srx*sry; 	H(1,2) = 0; H(1,3) = 0; H(1,4) = 0; H(1,5) = 0;
-// 		H(2,0) = cry*srx;	H(2,1) = crx*sry;	H(2,2) = 0; H(2,3) = 0; H(2,4) = 0; H(2,5) = 0;
-		
-// 		// Compute measurement noise jacoban R
-// 		Eigen::Matrix<double, 3, 3> R;
-// 		mod = fabs(sqrt(ax*ax + ay*ay + az*az)-1);
-// 		R.setZero(3, 3);
-//         R(0,0) = accVar_[0];
-//         R(1,1) = accVar_[1];
-//         R(2,2) = accVar_[2];
-// 		/*if(mod > accTh)
-// 		{
-// 			R(0,0) += 1.5*mod*mod;
-// 			R(1,1) += 1.5*mod*mod;
-// 			R(2,2) += 1.5*mod*mod;
-// 		}*/
-		
-// 		// Compute innovation matrix
-// 		Eigen::Matrix<double, 3, 3> S;
-//         S = H*P_*H.transpose()+R;
-		
-// 		// Compute kalman gain
-// 		Eigen::Matrix<double, 6, 3> K;
-//         K = P_*H.transpose()*S.inverse();
-		
-// 		// Compute mean error
-// 		y[0] = ax-sry;
-// 		y[1] = ay+cry*srx;
-// 		y[2] = az+crx*cry;
-		
-// 		// Compute new state vector
-//         rx_ += K(0,0)*y[0]+K(0,1)*y[1]+K(0,2)*y[2];
-//         ry_ += K(1,0)*y[0]+K(1,1)*y[1]+K(1,2)*y[2];
-//         rz_ += K(2,0)*y[0]+K(2,1)*y[1]+K(2,2)*y[2];
-//         gbx_ += K(3,0)*y[0]+K(3,1)*y[1]+K(3,2)*y[2];
-//         gby_ += K(4,0)*y[0]+K(4,1)*y[1]+K(4,2)*y[2];
-//         gbz_ += K(5,0)*y[0]+K(5,1)*y[1]+K(5,2)*y[2];
-		
-// 		// Compute new covariance matrix
-// 		Eigen::Matrix<double, 6, 6> I;
-// 		I.setIdentity(6, 6);
-//         P_ = (I-K*H)*P_;
-		
-// 		return true;
 // 	}
 
 //     /** EKF update stage based on accelerometer information
@@ -387,30 +321,35 @@ public:
 //         return init_;
 // 	}
 
-//     /** IMU sensor data callback
-//      * @param[in] msg IMU data message
-//      */
-// 	void imuDataCallback(const sensor_msgs::Imu::ConstPtr& msg)
-// 	{
-// 		// Check for IMU initialization
-//         if(!init_)
-// 		{
-//             calibData_.push_back(*msg);
-//             if(calibData_.size() > calibTime_/T_)
-// 				initialize();
+    /** pose data callback
+     * @param[in] msg TransformStamped data message
+     */
+	void poseDataCallback(const geometry_msgs::TransformStamped::ConstPtr& msg)
+	{
+		// Check for IMU initialization
+        // if(!init_)
+		// {
+        //     calibData_.push_back(*msg);
+        //     if(calibData_.size() > calibTime_/T_)
+		// 		initialize();
 			
-// 			return;
-// 		}	
-		
-// 		// Process sensor data
-// 		predict(msg->angular_velocity.z, msg->angular_velocity.x, msg->angular_velocity.y);
-// 		update(LIN2GRAV(msg->linear_acceleration.z), LIN2GRAV(msg->linear_acceleration.x), LIN2GRAV(msg->linear_acceleration.y));
+		// 	return;
+		// }	
 
-//         // Integrate angle rates
-//         irx_ += (msg->angular_velocity.z-gbx_)*T_;
-//         iry_ += (msg->angular_velocity.x-gby_)*T_;
-//         irz_ += (msg->angular_velocity.y-gbz_)*T_;
-//     }
+        if(msg) {
+            ROS_INFO("POSE DATA RECEIVED");
+            posePub_.publish(msg);
+        }
+		
+		// Process sensor data
+		// predict(msg->angular_velocity.z, msg->angular_velocity.x, msg->angular_velocity.y);
+		// update(LIN2GRAV(msg->linear_acceleration.z), LIN2GRAV(msg->linear_acceleration.x), LIN2GRAV(msg->linear_acceleration.y));
+
+        // Integrate angle rates
+        // irx_ += (msg->angular_velocity.z-gbx_)*T_;
+        // iry_ += (msg->angular_velocity.x-gby_)*T_;
+        // irz_ += (msg->angular_velocity.y-gbz_)*T_;
+    }
 	
 // protected:
 
@@ -448,51 +387,46 @@ public:
 // 	}
 	
 
-//     std::vector<double> SV_; /* State vector for pose = x, y, theta & map = x,y for 100 landmarks */                
+    std::vector<double> SV_;                /* State vector for pose = x, y, theta & map = x,y for 100 landmarks */                
 
-//     Eigen::Matrix<double, 6, 303> CM_;          /**< IMU KF matrix*/
+    Eigen::Matrix<double, 6, 603> CM_;      /**< Covariance matrix*/
 
+    bool init_;                             /**< Flag indicating if EKF has been initialized*/
 
+    ros::NodeHandle nh_;                    /**< ROS node handler*/
+    ros::Subscriber poseSub_;               /**< VIO pose subscriber*/
 
+    ros::Publisher posePub_;                /**< Publisher for predicted pose*/
 
-//     double calibTime_;      /**< IMU calibration time*/
+    // double calibTime_;      /**< IMU calibration time*/
 
-//     double T_;                                  /**< IMU KF prediction period*/
-//     double T2_;                                 /**< Squared IMU KF prediction period*/
-//     double rx_, ry_, rz_, gbx_, gby_, gbz_;     /**< IMU KF state vector x = [rx, ry, rz, gbx, gby, gbz]*/
-//     Eigen::MatrixXd P_;                         /**< IMU KF matrix*/
+    // double T_;                                  /**< IMU KF prediction period*/
+    // double T2_;                                 /**< Squared IMU KF prediction period*/
+    // double rx_, ry_, rz_, gbx_, gby_, gbz_;     /**< IMU KF state vector x = [rx, ry, rz, gbx, gby, gbz]*/
+    // Eigen::MatrixXd P_;                         /**< IMU KF matrix*/
 	
-//     double magCal_[6];      /**< Sensor calib info [gainX, gainY, gainZ, offsetX, offsetY, offsetZ]*/
+    // double magCal_[6];      /**< Sensor calib info [gainX, gainY, gainZ, offsetX, offsetY, offsetZ]*/
 	
-//     double accVar_[3];      /**< Accelerometers variances [varX, varY, varZ]*/
-//     double magVar_[3];      /**< Magnetometers variances [varX, varY, varZ]*/
-//     double gyrVar_[3];      /**< Gyroscopes variances [varX, varY, varZ]*/
-//     double biaVar_[3];      /**< Bias variances [varX, varY, varZ]*/
+    // double accVar_[3];      /**< Accelerometers variances [varX, varY, varZ]*/
+    // double magVar_[3];      /**< Magnetometers variances [varX, varY, varZ]*/
+    // double gyrVar_[3];      /**< Gyroscopes variances [varX, varY, varZ]*/
+    // double biaVar_[3];      /**< Bias variances [varX, varY, varZ]*/
 	
-//     double accTh_;          /**< Accelerometer threshold for filter updating*/
+    // double accTh_;          /**< Accelerometer threshold for filter updating*/
+		
+	// EKF Parameters
+    // double accDev_;
+    // double gyrDev_;
+    // double magDev_;
+    double biaDev_;
+    double biaTh_;
+    // double magXs_;
+    // double magYs_;
+    // double magZs_;
+    // double magXo_;
+    // double magYo_;
+    // double magZo_;
 	
-//     bool init_;             /**< Flag indicating if IMU has been initialized*/
-	
-// 	// EKF Parameters
-//     double accDev_;
-//     double gyrDev_;
-//     double magDev_;
-//     double biaDev_;
-//     double biaTh_;
-//     double magXs_;
-//     double magYs_;
-//     double magZs_;
-//     double magXo_;
-//     double magYo_;
-//     double magZo_;
-	
-//     std::vector<sensor_msgs::Imu> calibData_;   /**< IMU data for initialization*/
-	
-//     ros::NodeHandle nh_;        /**< ROS node handler*/
-//     ros::Subscriber sub_;       /**< IMU data subscriber*/
-
-//     double irx_, iry_, irz_;    /**< Integrated angles since last reset*/
-
 };
 
 #endif

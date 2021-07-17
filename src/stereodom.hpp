@@ -51,6 +51,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <sensor_msgs/point_cloud_conversion.h>
 #include <tf/tf.h>
 #include <tf/transform_broadcaster.h>
+#include <string.h>
 
 // Dynamic Reconfigure Parameters
 #include <dynamic_reconfigure/server.h>
@@ -139,6 +140,9 @@ public:
         transformPub_ = nh_.advertise<geometry_msgs::TransformStamped>(nodeName + "/viodom_transform", 1);
         if (publishPc_)
             pcPub_ = nh_.advertise<sensor_msgs::PointCloud2>(nodeName + "/point_cloud", 1);
+
+
+        points2dPub_ = nh_.advertise<sensor_msgs::PointCloud2>(nodeName + "/point2d_cloud", 1);
 
         // Init odometry
         odomInit_ = false;
@@ -547,6 +551,30 @@ private:
         pcPub_.publish(outCloud2);
     }
 
+
+    /** @brief Publish 2D point cloud
+     * @param[in] header Header for the point cloud message
+     */
+    void publish2DPointCloud(const std::vector<cv::Point3f> pcl2d, const std_msgs::Header header) {
+        // Fill PointCloud message
+        sensor_msgs::PointCloud outCloud;
+        outCloud.points.resize(pcl2d.size());
+        outCloud.header = header;
+        for (size_t i = 0; i < outCloud.points.size(); i++) {
+            outCloud.points[i].x = pcl2d[i].x;
+            outCloud.points[i].y = pcl2d[i].y;
+            outCloud.points[i].z = pcl2d[i].z;
+        }
+
+        // Convert PointCloud to PointCloud2
+        sensor_msgs::PointCloud2 outCloud2;
+        sensor_msgs::convertPointCloudToPointCloud2(outCloud, outCloud2);
+
+        // Publish point cloud
+        points2dPub_.publish(outCloud2);
+    }
+
+
     /** @brief Update previous-current keypoints, images, descriptors, matches and point clouds
      * @param[in] imgL Current left image
      * @param[in] imgR Current right image
@@ -649,6 +677,8 @@ private:
 
                 //Publish transform
                 publishTf(odom_);
+
+                publish2DPointCloud(pclC_, leftImg->header);
 
                 // Publish current 3D point cloud
                 if (publishPc_)
@@ -774,6 +804,7 @@ private:
 
     ros::Publisher transformPub_; /**< Publisher for output odometry transform*/
     ros::Publisher pcPub_; /**< Publisher for 3D point cloud*/
+    ros::Publisher points2dPub_; /**< Publisher for 2D point projections*/
 
     bool odomInit_; /**< Flag to determine whether to perform odometry or not*/
     bool calibInit_; /**< Flag indicating if we have calibration data*/

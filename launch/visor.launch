@@ -21,6 +21,7 @@ Files tuned for Carnegie Robotics Multisense Head
     <param name="left_cam" value="/multisense/left" />
     <param name="right_cam" value="/multisense/right" />
     <param name="pose_topic" value="/viodom_node/viodom_transform" />
+    <param name="p2d_topic" value="/viodom_node/point2d_cloud" />
   </node>
 
 </launch>

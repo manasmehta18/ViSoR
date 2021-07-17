@@ -32,7 +32,7 @@ public:
      * @param poseTopic Name of the IMU data topic
      * @param calibTime Initial calibration time (seconds)
      */
-    EkfSlam(std::string& nodeName, std::string& leftCam, std::string& rightCam, std::string& poseTopic) {
+    EkfSlam(std::string& nodeName, std::string& leftCam, std::string& rightCam, std::string& poseTopic, std::string& p2d_topic) {
         init_ = false;
         // T_ = T;
         // T2_ = T*T;
@@ -52,14 +52,14 @@ public:
         biaDev_ = 0.00001;//0.000001;
         biaTh_ = 0.005; //0.001;
 		
-        // Stereodom odom(nodeName, leftCam, rightCam, imuTopic);
 
-        
-
-        // Setup pose data subscriber
+        // Setup data subscribers
         poseSub_ = nh_.subscribe(poseTopic, 10, &EkfSlam::poseDataCallback, this);
+        p2dSub_ = nh_.subscribe(p2d_topic, 10, &EkfSlam::pc2DataCallback, this);
 
+        // Setup data publishers
         posePub_ = nh_.advertise<geometry_msgs::TransformStamped>(nodeName + "/pose", 1);
+        p2dPub_ = nh_.advertise<sensor_msgs::PointCloud2>(nodeName + "/point_cloud_2d", 1);
 	}
 
 	
@@ -176,6 +176,9 @@ public:
 //         rx_ += T_*(gx - gbx_);
 //         ry_ += T_*(gy - gby_);
 //         rz_ += T_*(gz - gbz_);
+
+
+        // pred_ = true;
 														
 // 		return true; 
 // 	}
@@ -330,8 +333,7 @@ public:
     /** pose data callback
      * @param[in] msg TransformStamped data message
      */
-	void poseDataCallback(const geometry_msgs::TransformStamped::ConstPtr& msg)
-	{
+	void poseDataCallback(const geometry_msgs::TransformStamped::ConstPtr& msg) {
 		// Check for IMU initialization
         // if(!init_)
 		// {
@@ -344,21 +346,68 @@ public:
 
         if(!init_) {
             initialize();
+            return;
         }
 
         if(msg) {
-            ROS_INFO("POSE DATA RECEIVED");
+            // ROS_INFO("POSE DATA RECEIVED");
             posePub_.publish(msg);
-        }
+        
 		
 		// Process sensor data
 		// predict(msg->angular_velocity.z, msg->angular_velocity.x, msg->angular_velocity.y);
-		// update(LIN2GRAV(msg->linear_acceleration.z), LIN2GRAV(msg->linear_acceleration.x), LIN2GRAV(msg->linear_acceleration.y));
 
-        // Integrate angle rates
-        // irx_ += (msg->angular_velocity.z-gbx_)*T_;
-        // iry_ += (msg->angular_velocity.x-gby_)*T_;
-        // irz_ += (msg->angular_velocity.y-gbz_)*T_;
+        } else {
+            ROS_WARN("No pose received!");
+        }  
+    }
+
+        /** @brief Publish 2D point cloud
+     * @param[in] header Header for the point cloud message
+     */
+    void pc2DataCallback (const sensor_msgs::PointCloud2::ConstPtr& msg) {
+        // Fill PointCloud message
+
+        if(msg) {
+            ROS_INFO("CLOUD DATA RECEIVED");
+
+            sensor_msgs::PointCloud inCloud;
+            sensor_msgs::convertPointCloud2ToPointCloud(*msg, inCloud);
+
+            curr2D.clear();
+            curr2D.resize(inCloud.points.size());
+
+            for (size_t i = 0; i < inCloud.points.size(); i++) {
+                curr2D[i].x = inCloud.points[i].x;
+                curr2D[i].y = inCloud.points[i].y;
+            }
+
+
+
+
+            sensor_msgs::PointCloud outCloud;
+            outCloud.points.resize(curr2D.size());
+            outCloud.header = msg->header;
+            for (size_t i = 0; i < outCloud.points.size(); i++) {
+                outCloud.points[i].x = curr2D[i].x;
+                outCloud.points[i].y = curr2D[i].y;
+                outCloud.points[i].z = 0;
+            }
+
+            // Convert PointCloud to PointCloud2
+            sensor_msgs::PointCloud2 outCloud2;
+            sensor_msgs::convertPointCloudToPointCloud2(outCloud, outCloud2);
+
+            // Publish point cloud
+            p2dPub_.publish(outCloud2);
+
+
+
+            // if (pred_)
+            // update(LIN2GRAV(msg->linear_acceleration.z), LIN2GRAV(msg->linear_acceleration.x), LIN2GRAV(msg->linear_acceleration.y));
+        } else {
+            ROS_WARN("No keypoints received!");
+        }
     }
 	
 // protected:
@@ -403,10 +452,17 @@ public:
 
     bool init_;                             /**< Flag indicating if EKF has been initialized*/
 
+    bool pred_;                             /**< Flag indicating if prediction step has been done*/
+    
     ros::NodeHandle nh_;                    /**< ROS node handler*/
     ros::Subscriber poseSub_;               /**< VIO pose subscriber*/
+    ros::Subscriber p2dSub_;               /**< 2D pointcloud subscriber*/
 
     ros::Publisher posePub_;                /**< Publisher for predicted pose*/
+    ros::Publisher p2dPub_;                /**< Publisher for predicted pose*/
+
+    std::vector<cv::Point2f> curr2D;        /**< current 2D points*/
+
 
     // double calibTime_;      /**< IMU calibration time*/
 

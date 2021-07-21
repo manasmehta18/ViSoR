@@ -706,7 +706,7 @@ private:
                 // Transform back to camera frame to compensate odomC_ accordingly
                 odomC_ = baselink2camera(odom_);
 
-                if (flow > flowThreshold_ && updatedPose_) {
+                if (flow > flowThreshold_ /* && updatedPose_ */) {
                     // Save key-frame transform and image
                     odomCkf_ = odomC_;
                     imgL.copyTo(imgCkf_);
@@ -736,7 +736,7 @@ private:
             ROS_WARN("odomInit = false");
 
         // If new key-frame or first image pair
-        if ((flow > flowThreshold_ && updatedPose_) || !odomInit_) {
+        if ((flow > flowThreshold_ /*&& updatedPose_*/) || !odomInit_) {
             updatePreviousStuff(imgL, imgR);
         }
 
@@ -751,6 +751,23 @@ private:
      */
 	void slamPoseDataCallback(const geometry_msgs::TransformStamped::ConstPtr& msg) {
         if(msg) {
+
+        
+            // tf::Quaternion qPose;
+            // qPose.setX(msg->transform.rotation.x);
+            // qPose.setY(msg->transform.rotation.y);
+            // qPose.setZ(msg->transform.rotation.z);
+            // qPose.setW(msg->transform.rotation.w);
+            // tf::Vector3 pPose;
+            // pPose.setX(msg->transform.translation.x);
+            // pPose.setY(msg->transform.translation.y);
+            // pPose.setZ(msg->transform.translation.z);
+            // tf::Transform odomTemp;
+            // odomTemp.setRotation(qPose);
+            // odomTemp.setOrigin(pPose);
+            
+            // odomCkf_ = baselink2camera(odomTemp);
+
             ROS_INFO("UPDATED POSE RECEIVED: ");
             updatedPose_ = true;
         }

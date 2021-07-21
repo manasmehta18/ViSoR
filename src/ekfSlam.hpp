@@ -353,10 +353,10 @@ public:
             ROS_INFO("POSE DATA RECEIVED");
 
 
-            ros::Rate rate(24.);
-            while(ros::ok()) {
-                rate.sleep();
-            }
+            // ros::Rate rate(24.);
+            // while(ros::ok()) {
+            //     rate.sleep();
+            // }
 
 
             posePub_.publish(msg);
@@ -387,8 +387,6 @@ public:
                 curr2D[i].x = inCloud.points[i].x;
                 curr2D[i].y = inCloud.points[i].y;
             }
-
-
 
 
             sensor_msgs::PointCloud outCloud;

@@ -17,12 +17,6 @@ int main(int argc, char **argv)
   
 	// Read node parameters
 	ros::NodeHandle lnh("~");
-	if(!lnh.getParam("left_cam", left_cam))
-		left_cam = "/stereo/left";
-	if(left_cam[left_cam.length()-1] == '/')
-		left_cam.erase(left_cam.length()-1, 1);
-	if(!lnh.getParam("right_cam", right_cam))
-		right_cam = "/stereo/right";
 	if(!lnh.getParam("pose_topic", pose_topic))
         pose_topic = "/pose";
 	if(!lnh.getParam("p2d_topic", p2d_topic))

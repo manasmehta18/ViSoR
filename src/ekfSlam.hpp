@@ -58,7 +58,7 @@ public:
         p2dSub_ = nh_.subscribe(p2d_topic, 10, &EkfSlam::pc2DataCallback, this);
 
         // Setup data publishers
-        posePub_ = nh_.advertise<geometry_msgs::TransformStamped>(nodeName + "/pose", 1);
+        posePub_ = nh_.advertise<geometry_msgs::TransformStamped>(nodeName + "/slamPose", 1);
         p2dPub_ = nh_.advertise<sensor_msgs::PointCloud2>(nodeName + "/point_cloud_2d", 1);
 	}
 
@@ -344,13 +344,21 @@ public:
 		// 	return;
 		// }	
 
-        if(!init_) {
-            initialize();
-            return;
-        }
+        // if(!init_) {
+        //     initialize();
+        //     return;
+        // }
 
         if(msg) {
-            // ROS_INFO("POSE DATA RECEIVED");
+            ROS_INFO("POSE DATA RECEIVED");
+
+
+            ros::Rate rate(24.);
+            while(ros::ok()) {
+                rate.sleep();
+            }
+
+
             posePub_.publish(msg);
         
 		
@@ -369,8 +377,6 @@ public:
         // Fill PointCloud message
 
         if(msg) {
-            ROS_INFO("CLOUD DATA RECEIVED");
-
             sensor_msgs::PointCloud inCloud;
             sensor_msgs::convertPointCloud2ToPointCloud(*msg, inCloud);
 

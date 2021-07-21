@@ -39,7 +39,7 @@ POSSIBILITY OF SUCH DAMAGE.
 
 int main(int argc, char **argv)
 {
-	std::string left_cam, right_cam, imu_topic;
+	std::string left_cam, right_cam, imu_topic, slam_pose;
 	ros::init(argc, argv, "viodom_node");  
   
 	// Read node parameters
@@ -54,10 +54,12 @@ int main(int argc, char **argv)
         imu_topic = "/imu";
 	if(right_cam[right_cam.length()-1] == '/')
 		right_cam.erase(right_cam.length()-1, 1);
+	if(!lnh.getParam("slam_pose", slam_pose))
+        imu_topic = "/pose";
 
 	// Visual odometry instance
 	std::string node_name = "viodom_node";
-	Stereodom odom(node_name, left_cam, right_cam, imu_topic);
+	Stereodom odom(node_name, left_cam, right_cam, imu_topic, slam_pose);
 	
 	// Spin for ever
 	ros::spin();

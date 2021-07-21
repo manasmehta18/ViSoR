@@ -84,7 +84,7 @@ public:
      * @param rightCam Name of the right camera
      * @param imuTopic Name of the IMU data topic
      */
-    Stereodom(std::string& nodeName, std::string& leftCam, std::string& rightCam, std::string& imuTopic)
+    Stereodom(std::string& nodeName, std::string& leftCam, std::string& rightCam, std::string& imuTopic, std::string& slamPose)
         : imu_(0.005, imuTopic, 3.0)
         , it_(nh_)
         , leftImgSubs_(it_, leftCam + "", 1)
@@ -132,12 +132,20 @@ public:
         Stereodom::dyn_rec_f_ = boost::bind(&Stereodom::dynRecCallback, this, _1, _2);
         Stereodom::dyn_rec_server_.setCallback(Stereodom::dyn_rec_f_);
 
+
+        slamPoseSub_= nh_.subscribe(slamPose, 10, &Stereodom::slamPoseDataCallback, this);
+
+        
+
         // Init subscriber synchronizers
         stereoSync_.registerCallback(boost::bind(&Stereodom::stereoCallback, this, _1, _2));
         cameraInfoSync_.registerCallback(boost::bind(&Stereodom::cameraInfoCallback, this, _1, _2));
 
         // Init publishers
         transformPub_ = nh_.advertise<geometry_msgs::TransformStamped>(nodeName + "/viodom_transform", 1);
+        transformPubkf_ = nh_.advertise<geometry_msgs::TransformStamped>(nodeName + "/viodom_kfpose", 1);
+
+
         if (publishPc_)
             pcPub_ = nh_.advertise<sensor_msgs::PointCloud2>(nodeName + "/point_cloud", 1);
 
@@ -147,6 +155,7 @@ public:
         // Init odometry
         odomInit_ = false;
         calibInit_ = false;
+        updatedPose_ = true;
         odomC_.setIdentity();
         odomCkf_.setIdentity();
         odom_.setIdentity();
@@ -528,6 +537,34 @@ private:
         transformPub_.publish(outTransform);
     }
 
+
+    /** @brief Publish 6DOF pose from keyframe geometry_msgs::TransformStamped
+     * @param odom Keyframe Odometry transform to be published
+     */
+    void publishkfTf(const tf::Transform& odom) {
+
+        // // Publish TF
+        // tfBr_.sendTransform(
+        //     tf::StampedTransform(odom, ros::Time::now(),
+        //         srcFrameId_, tgtFrameId_));
+
+        // Publish pose
+        geometry_msgs::TransformStamped outTransform;
+        outTransform.header.frame_id = srcFrameId_;
+        outTransform.header.stamp = ros::Time::now();
+        tf::Quaternion qPose = odom.getRotation();
+        outTransform.transform.rotation.x = qPose.x();
+        outTransform.transform.rotation.y = qPose.y();
+        outTransform.transform.rotation.z = qPose.z();
+        outTransform.transform.rotation.w = qPose.w();
+        tf::Vector3 pPose = odom.getOrigin();
+        outTransform.transform.translation.x = pPose.x();
+        outTransform.transform.translation.y = pPose.y();
+        outTransform.transform.translation.z = pPose.z();
+        transformPubkf_.publish(outTransform);
+    }
+
+
     /** @brief Publish 3D point cloud
      * @param[in] header Header for the point cloud message
      */
@@ -669,10 +706,20 @@ private:
                 // Transform back to camera frame to compensate odomC_ accordingly
                 odomC_ = baselink2camera(odom_);
 
-                if (flow > flowThreshold_) {
+                if (flow > flowThreshold_ && updatedPose_) {
                     // Save key-frame transform and image
                     odomCkf_ = odomC_;
                     imgL.copyTo(imgCkf_);
+
+                    // send keyframe pose to slam node
+                    odomkf_ = camera2baselink(odomCkf_);
+                    publishkfTf(odomkf_);
+
+                    // set flag false to prevent keyframe update until data from SLAM node is received
+                    updatedPose_ = false;
+
+                } else {
+                    ROS_WARN("WAITING FOR CORRECTED POSE");
                 }
 
                 //Publish transform
@@ -689,13 +736,30 @@ private:
             ROS_WARN("odomInit = false");
 
         // If new key-frame or first image pair
-        if (flow > flowThreshold_ || !odomInit_) {
+        if ((flow > flowThreshold_ && updatedPose_) || !odomInit_) {
             updatePreviousStuff(imgL, imgR);
         }
 
         // Set the init flag to true
         odomInit_ = true;
     }
+
+
+
+    /** pose data callback
+     * @param[in] msg TransformStamped data message
+     */
+	void slamPoseDataCallback(const geometry_msgs::TransformStamped::ConstPtr& msg) {
+        if(msg) {
+            ROS_INFO("UPDATED POSE RECEIVED: ");
+            updatedPose_ = true;
+    }
+
+
+
+
+
+
 
     /** @brief Camera calibration info callback
      * @param leftInfo Left camera calibration data
@@ -802,12 +866,17 @@ private:
     message_filters::TimeSynchronizer<sensor_msgs::Image, sensor_msgs::Image> stereoSync_; /**< Time synchronizer filter for images*/
     message_filters::TimeSynchronizer<sensor_msgs::CameraInfo, sensor_msgs::CameraInfo> cameraInfoSync_; /**< Time synchronizer filter for camera info*/
 
+    ros::Subscriber slamPoseSub_;
+
     ros::Publisher transformPub_; /**< Publisher for output odometry transform*/
     ros::Publisher pcPub_; /**< Publisher for 3D point cloud*/
     ros::Publisher points2dPub_; /**< Publisher for 2D point projections*/
+    ros::Publisher transformPubkf_; /**< Publisher for output keyframe odometry transform*/
 
     bool odomInit_; /**< Flag to determine whether to perform odometry or not*/
     bool calibInit_; /**< Flag indicating if we have calibration data*/
+    bool updatedPose_;  /**< Flag indicating if updated pose received from SLAM node*/
+
 
     // Node params
     bool publishPc_; /**< Flag to determine whether to publish 3D point cloud*/
@@ -825,7 +894,7 @@ private:
 
     cv::Mat mapL1_, mapL2_, mapR1_, mapR2_; /**< Stereo rectification mappings*/
 
-    tf::Transform odom_, odomC_, odomCkf_; /**< Odometry matrices in camera and base_link frames*/
+    tf::Transform odom_, odomkf_, odomC_, odomCkf_; /**< Odometry matrices in camera and base_link frames*/
     cv::Mat imgC_, imgCkf_; /**< Current and key-frame images*/
     cv::Mat imgRP_, imgLP_; /**< Previous right(R) and left(L) images*/
 

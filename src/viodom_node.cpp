@@ -50,10 +50,10 @@ int main(int argc, char **argv)
 		left_cam.erase(left_cam.length()-1, 1);
 	if(!lnh.getParam("right_cam", right_cam))
 		right_cam = "/stereo/right";
-	if(!lnh.getParam("imu_topic", imu_topic))
-        imu_topic = "/imu";
 	if(right_cam[right_cam.length()-1] == '/')
 		right_cam.erase(right_cam.length()-1, 1);
+	if(!lnh.getParam("imu_topic", imu_topic))
+        imu_topic = "/imu";
 	if(!lnh.getParam("slam_pose", slam_pose))
         imu_topic = "/pose";
 

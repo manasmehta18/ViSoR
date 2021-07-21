@@ -3,7 +3,8 @@
  * @brief Visual odometry based on the Visual-Inertial Sensor
  * @author Fernando Caballero, fcaballero@us.es
  * @author Francisco J Perez-Grau, fjperez@catec.aero
- * @date October 2016
+ * @author Manas Mehta, mmehta@wpi.edu
+ * @date October 2016, July 2021
  *
 Copyright (c) 2016, fcaballero, fjperezgrau
 All rights reserved.
@@ -131,24 +132,18 @@ public:
         // Dynamic reconfigure callback
         Stereodom::dyn_rec_f_ = boost::bind(&Stereodom::dynRecCallback, this, _1, _2);
         Stereodom::dyn_rec_server_.setCallback(Stereodom::dyn_rec_f_);
-
-
-        slamPoseSub_= nh_.subscribe(slamPose, 10, &Stereodom::slamPoseDataCallback, this);
-
         
-
         // Init subscriber synchronizers
         stereoSync_.registerCallback(boost::bind(&Stereodom::stereoCallback, this, _1, _2));
         cameraInfoSync_.registerCallback(boost::bind(&Stereodom::cameraInfoCallback, this, _1, _2));
+        slamPoseSub_= nh_.subscribe(slamPose, 10, &Stereodom::slamPoseDataCallback, this);
 
         // Init publishers
         transformPub_ = nh_.advertise<geometry_msgs::TransformStamped>(nodeName + "/viodom_transform", 1);
         transformPubkf_ = nh_.advertise<geometry_msgs::TransformStamped>(nodeName + "/viodom_kfpose", 1);
 
-
         if (publishPc_)
             pcPub_ = nh_.advertise<sensor_msgs::PointCloud2>(nodeName + "/point_cloud", 1);
-
 
         points2dPub_ = nh_.advertise<sensor_msgs::PointCloud2>(nodeName + "/point2d_cloud", 1);
 
@@ -719,6 +714,7 @@ private:
                     // set flag false to prevent keyframe update until data from SLAM node is received
                     updatedPose_ = false;
 
+                    // publish keyframe pose
                     publishkfTf(odomkf_);
 
                 } else {
@@ -728,6 +724,7 @@ private:
                 //Publish transform
                 publishTf(odom_);
 
+                // Publish point cloud - TODO - might remove
                 publish2DPointCloud(pclC_, leftImg->header);
 
                 // Publish current 3D point cloud
@@ -748,12 +745,13 @@ private:
     }
 
 
-
     /** pose data callback
      * @param[in] msg TransformStamped data message
      */
 	void slamPoseDataCallback(const geometry_msgs::TransformStamped::ConstPtr& msg) {
         if(msg) {
+
+            // get the corrected pose from the slam node
             tf::Quaternion qPose;
             qPose.setX(msg->transform.rotation.x);
             qPose.setY(msg->transform.rotation.y);
@@ -766,18 +764,16 @@ private:
             tf::Transform odomTemp;
             odomTemp.setRotation(qPose);
             odomTemp.setOrigin(pPose);
-            
+
+            // update the keyframe pose with the corrected pose from slam node
             odomCkf_ = baselink2camera(odomTemp);
 
             ROS_INFO("UPDATED POSE RECEIVED: ");
+
+            // set updated pose flag to true
             updatedPose_ = true;
         }
     }
-
-
-
-
-
 
 
     /** @brief Camera calibration info callback
@@ -885,7 +881,7 @@ private:
     message_filters::TimeSynchronizer<sensor_msgs::Image, sensor_msgs::Image> stereoSync_; /**< Time synchronizer filter for images*/
     message_filters::TimeSynchronizer<sensor_msgs::CameraInfo, sensor_msgs::CameraInfo> cameraInfoSync_; /**< Time synchronizer filter for camera info*/
 
-    ros::Subscriber slamPoseSub_;
+    ros::Subscriber slamPoseSub_; /**< Subscriber for slam node corrected pose transform*/
 
     ros::Publisher transformPub_; /**< Publisher for output odometry transform*/
     ros::Publisher pcPub_; /**< Publisher for 3D point cloud*/
@@ -895,7 +891,6 @@ private:
     bool odomInit_; /**< Flag to determine whether to perform odometry or not*/
     bool calibInit_; /**< Flag indicating if we have calibration data*/
     bool updatedPose_;  /**< Flag indicating if updated pose received from SLAM node*/
-
 
     // Node params
     bool publishPc_; /**< Flag to determine whether to publish 3D point cloud*/

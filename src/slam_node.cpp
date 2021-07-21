@@ -10,9 +10,9 @@
 #include <ros/ros.h>
 #include "ekfSlam.hpp"
 
-int main(int argc, char **argv)
-{
-	std::string left_cam, right_cam, pose_topic, p2d_topic;
+int main(int argc, char **argv) {
+
+	std::string pose_topic, p2d_topic;
 	ros::init(argc, argv, "slam_node");  
   
 	// Read node parameters
@@ -21,12 +21,10 @@ int main(int argc, char **argv)
         pose_topic = "/pose";
 	if(!lnh.getParam("p2d_topic", p2d_topic))
         p2d_topic = "/p2d";
-	if(right_cam[right_cam.length()-1] == '/')
-		right_cam.erase(right_cam.length()-1, 1);
 
-	// Visual odometry instance
+	// ekf slam instance
 	std::string node_name = "slam_node";
-    EkfSlam ekfSlam(node_name, left_cam, right_cam, pose_topic, p2d_topic);
+    EkfSlam ekfSlam(node_name, pose_topic, p2d_topic);
 	
 	// Spin for ever
 	ros::spin();

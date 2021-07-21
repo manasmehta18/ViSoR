@@ -32,27 +32,18 @@ public:
      * @param poseTopic Name of the IMU data topic
      * @param calibTime Initial calibration time (seconds)
      */
-    EkfSlam(std::string& nodeName, std::string& leftCam, std::string& rightCam, std::string& poseTopic, std::string& p2d_topic) {
+    EkfSlam(std::string& nodeName, std::string& poseTopic, std::string& p2d_topic) {
         init_ = false;
         // T_ = T;
         // T2_ = T*T;
 
+        // Declare state vector
         SV_ = std::vector<double>(403);
 
 		// IMU EKF parameters
-        // accDev_ = 0.006;//0.001
-        // gyrDev_ = 0.005;//0.01;
-        // magDev_ = 0;
-        // magXs_ = 1.0;
-        // magYs_ = 1.0;
-        // magZs_ = 1.0;
-        // magXo_ = 0.0;
-        // magYo_ = 0.0;
-        // magZo_ = 0.0;
         biaDev_ = 0.00001;//0.000001;
         biaTh_ = 0.005; //0.001;
 		
-
         // Setup data subscribers
         poseSub_ = nh_.subscribe(poseTopic, 10, &EkfSlam::poseDataCallback, this);
         p2dSub_ = nh_.subscribe(p2d_topic, 10, &EkfSlam::pc2DataCallback, this);
@@ -334,15 +325,6 @@ public:
      * @param[in] msg TransformStamped data message
      */
 	void poseDataCallback(const geometry_msgs::TransformStamped::ConstPtr& msg) {
-		// Check for IMU initialization
-        // if(!init_)
-		// {
-        //     calibData_.push_back(*msg);
-        //     if(calibData_.size() > calibTime_/T_)
-		// 		initialize();
-			
-		// 	return;
-		// }	
 
         // if(!init_) {
         //     initialize();
@@ -351,17 +333,8 @@ public:
 
         if(msg) {
             ROS_INFO("POSE DATA RECEIVED");
-
-
-            // ros::Rate rate(24.);
-            // while(ros::ok()) {
-            //     rate.sleep();
-            // }
-
-
             posePub_.publish(msg);
-        
-		
+        		
 		// Process sensor data
 		// predict(msg->angular_velocity.z, msg->angular_velocity.x, msg->angular_velocity.y);
 
@@ -388,7 +361,6 @@ public:
                 curr2D[i].y = inCloud.points[i].y;
             }
 
-
             sensor_msgs::PointCloud outCloud;
             outCloud.points.resize(curr2D.size());
             outCloud.header = msg->header;
@@ -404,8 +376,6 @@ public:
 
             // Publish point cloud
             p2dPub_.publish(outCloud2);
-
-
 
             // if (pred_)
             // update(LIN2GRAV(msg->linear_acceleration.z), LIN2GRAV(msg->linear_acceleration.x), LIN2GRAV(msg->linear_acceleration.y));
@@ -451,11 +421,9 @@ public:
 	
 
     std::vector<double> SV_;                /* State vector for pose = x, y, theta & map = x,y for 100 landmarks */                
-
     Eigen::Matrix<double, 6, 603> CM_;      /**< Covariance matrix*/
 
     bool init_;                             /**< Flag indicating if EKF has been initialized*/
-
     bool pred_;                             /**< Flag indicating if prediction step has been done*/
     
     ros::NodeHandle nh_;                    /**< ROS node handler*/
@@ -475,28 +443,8 @@ public:
     // double rx_, ry_, rz_, gbx_, gby_, gbz_;     /**< IMU KF state vector x = [rx, ry, rz, gbx, gby, gbz]*/
     // Eigen::MatrixXd P_;                         /**< IMU KF matrix*/
 	
-    // double magCal_[6];      /**< Sensor calib info [gainX, gainY, gainZ, offsetX, offsetY, offsetZ]*/
-	
-    // double accVar_[3];      /**< Accelerometers variances [varX, varY, varZ]*/
-    // double magVar_[3];      /**< Magnetometers variances [varX, varY, varZ]*/
-    // double gyrVar_[3];      /**< Gyroscopes variances [varX, varY, varZ]*/
-    // double biaVar_[3];      /**< Bias variances [varX, varY, varZ]*/
-	
-    // double accTh_;          /**< Accelerometer threshold for filter updating*/
-		
-	// EKF Parameters
-    // double accDev_;
-    // double gyrDev_;
-    // double magDev_;
     double biaDev_;
     double biaTh_;
-    // double magXs_;
-    // double magYs_;
-    // double magZs_;
-    // double magXo_;
-    // double magYo_;
-    // double magZo_;
-	
 };
 
 #endif

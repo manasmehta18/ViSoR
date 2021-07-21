@@ -753,6 +753,7 @@ private:
         if(msg) {
             ROS_INFO("UPDATED POSE RECEIVED: ");
             updatedPose_ = true;
+        }
     }
 
 

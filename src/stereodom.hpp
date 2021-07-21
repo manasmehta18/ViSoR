@@ -53,6 +53,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <tf/tf.h>
 #include <tf/transform_broadcaster.h>
 #include <string.h>
+#include <visor/kpt.h>
 
 // Dynamic Reconfigure Parameters
 #include <dynamic_reconfigure/server.h>
@@ -140,6 +141,8 @@ public:
 
         // Init publishers
         transformPub_ = nh_.advertise<geometry_msgs::TransformStamped>(nodeName + "/viodom_transform", 1);
+        kfPub_ = nh_.advertise<visor::kpt>(nodeName + "/viodom_kpt", 1);
+
         transformPubkf_ = nh_.advertise<geometry_msgs::TransformStamped>(nodeName + "/viodom_kfpose", 1);
 
         if (publishPc_)
@@ -533,6 +536,51 @@ private:
     }
 
 
+    /** @brief Publish 6DOF pose and pointcloud data from keyframe visor::kpt
+     * @param odom Keyframe Odometry transform to be published
+     * @param pcl Keyframe point cloud to be published
+     */
+    void publishKf(const tf::Transform& odom, const std::vector<cv::Point3f> pcl) {
+
+        visor::kpt keyPoint;
+        keyPoint.header.frame_id = srcFrameId_;
+        keyPoint.header.stamp = ros::Time::now();
+
+        // pose data
+        keyPoint.pose.header = keyPoint.header;
+
+        tf::Quaternion qPose = odom.getRotation();
+        keyPoint.pose.transform.rotation.x = qPose.x();
+        keyPoint.pose.transform.rotation.y = qPose.y();
+        keyPoint.pose.transform.rotation.z = qPose.z();
+        keyPoint.pose.transform.rotation.w = qPose.w();
+
+        tf::Vector3 pPose = odom.getOrigin();
+        keyPoint.pose.transform.translation.x = pPose.x();
+        keyPoint.pose.transform.translation.y = pPose.y();
+        keyPoint.pose.transform.translation.z = pPose.z();
+        
+
+        // Fill PointCloud message
+        sensor_msgs::PointCloud outCloud;
+        outCloud.points.resize(pcl.size());
+        outCloud.header = keyPoint.header;
+        for (size_t i = 0; i < outCloud.points.size(); i++) {
+            outCloud.points[i].x = pcl[i].x;
+            outCloud.points[i].y = pcl[i].y;
+            outCloud.points[i].z = pcl[i].z;
+        }
+
+        // Convert PointCloud to PointCloud2
+        sensor_msgs::PointCloud2 outCloud2;
+        sensor_msgs::convertPointCloudToPointCloud2(outCloud, outCloud2);
+        keyPoint.pc = outCloud2;
+
+        // publish keypoint
+        kfPub_.publish(keyPoint);
+    }
+
+
     /** @brief Publish 6DOF pose from keyframe geometry_msgs::TransformStamped
      * @param odom Keyframe Odometry transform to be published
      */
@@ -716,6 +764,7 @@ private:
 
                     // publish keyframe pose
                     publishkfTf(odomkf_);
+                    publishKf(odomkf_, pclC_);
 
                 } else {
                     ROS_WARN("WAITING FOR CORRECTED POSE");
@@ -885,6 +934,8 @@ private:
 
     ros::Publisher transformPub_; /**< Publisher for output odometry transform*/
     ros::Publisher pcPub_; /**< Publisher for 3D point cloud*/
+    ros::Publisher kfPub_; /**< Publisher for output keyframe*/
+
     ros::Publisher points2dPub_; /**< Publisher for 2D point projections*/
     ros::Publisher transformPubkf_; /**< Publisher for output keyframe odometry transform*/
 

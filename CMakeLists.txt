@@ -5,11 +5,14 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   dynamic_reconfigure
   std_msgs
+  geometry_msgs
+  sensor_msgs
   image_transport
   image_geometry
   cv_bridge
   tf
   cmake_modules
+  message_generation
 )
 
 find_package(Eigen)
@@ -20,7 +23,19 @@ generate_dynamic_reconfigure_options(
   cfg/stereodom.cfg
 )
 
-catkin_package()
+add_message_files(
+  FILES
+  kpt.msg
+)
+
+generate_messages(
+  DEPENDENCIES
+  std_msgs
+  geometry_msgs
+  sensor_msgs
+)
+
+catkin_package(CATKIN_DEPENDS message_runtime)
 
 include_directories(
   ${catkin_INCLUDE_DIRS}

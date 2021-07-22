@@ -19,8 +19,7 @@ Files tuned for Carnegie Robotics Multisense Head
     <param name="display_images" value="false" />
   </node>
   <node name="slam_node" type="slam_node" pkg="visor" output="screen" >
-    <param name="pose_topic" value="/viodom_node/viodom_kfpose" />
-    <param name="p2d_topic" value="/viodom_node/point2d_cloud" />
+    <param name="kpt_topic" value="/viodom_node/viodom_kpt" />
   </node>
 
 </launch>

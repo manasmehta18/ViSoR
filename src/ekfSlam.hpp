@@ -12,6 +12,7 @@
 #include <Eigen/Core>
 #include <Eigen/Dense>
 #include <vector>
+#include <visor/kpt.h>
 #include "stereodom.hpp"
 
 // Convenient constants
@@ -32,7 +33,7 @@ public:
      * @param poseTopic Name of the IMU data topic
      * @param calibTime Initial calibration time (seconds)
      */
-    EkfSlam(std::string& nodeName, std::string& poseTopic, std::string& p2d_topic) {
+    EkfSlam(std::string& nodeName, std::string& kptTopic) {
         init_ = false;
         // T_ = T;
         // T2_ = T*T;
@@ -45,8 +46,7 @@ public:
         biaTh_ = 0.005; //0.001;
 		
         // Setup data subscribers
-        poseSub_ = nh_.subscribe(poseTopic, 10, &EkfSlam::poseDataCallback, this);
-        p2dSub_ = nh_.subscribe(p2d_topic, 10, &EkfSlam::pc2DataCallback, this);
+        kptSub_ = nh_.subscribe(kptTopic, 10, &EkfSlam::kptDataCallback, this);
 
         // Setup data publishers
         posePub_ = nh_.advertise<geometry_msgs::TransformStamped>(nodeName + "/slamPose", 1);
@@ -324,34 +324,26 @@ public:
     /** pose data callback
      * @param[in] msg TransformStamped data message
      */
-	void poseDataCallback(const geometry_msgs::TransformStamped::ConstPtr& msg) {
+	void kptDataCallback(const visor::kpt::ConstPtr& msg) {
 
-        // if(!init_) {
-        //     initialize();
-        //     return;
-        // }
-
-        if(msg) {
-            ROS_INFO("POSE DATA RECEIVED");
-            posePub_.publish(msg);
-        		
-		// Process sensor data
-		// predict(msg->angular_velocity.z, msg->angular_velocity.x, msg->angular_velocity.y);
-
-        } else {
-            ROS_WARN("No pose received!");
-        }  
-    }
-
-        /** @brief Publish 2D point cloud
-     * @param[in] header Header for the point cloud message
-     */
-    void pc2DataCallback (const sensor_msgs::PointCloud2::ConstPtr& msg) {
-        // Fill PointCloud message
+        if(!init_) {
+            initialize();
+        }
 
         if(msg) {
+            ROS_INFO("KEYPOINT RECEIVED");
+
+            // Get pose data
+            geometry_msgs::TransformStamped uPose;
+            uPose = msg->pose;
+                   		
+		    // ekf predict step
+		    // predict(msg->angular_velocity.z, msg->angular_velocity.x, msg->angular_velocity.y);
+
+
+            // get observations - point cloud
             sensor_msgs::PointCloud inCloud;
-            sensor_msgs::convertPointCloud2ToPointCloud(*msg, inCloud);
+            sensor_msgs::convertPointCloud2ToPointCloud(msg->pc, inCloud);
 
             curr2D.clear();
             curr2D.resize(inCloud.points.size());
@@ -377,11 +369,15 @@ public:
             // Publish point cloud
             p2dPub_.publish(outCloud2);
 
-            // if (pred_)
+            // ekf update step
             // update(LIN2GRAV(msg->linear_acceleration.z), LIN2GRAV(msg->linear_acceleration.x), LIN2GRAV(msg->linear_acceleration.y));
+
+            // send corrected pose to viodom node
+            posePub_.publish(uPose);
+
         } else {
-            ROS_WARN("No keypoints received!");
-        }
+            ROS_WARN("No keyframe received!");
+        }  
     }
 	
 // protected:
@@ -427,14 +423,12 @@ public:
     bool pred_;                             /**< Flag indicating if prediction step has been done*/
     
     ros::NodeHandle nh_;                    /**< ROS node handler*/
-    ros::Subscriber poseSub_;               /**< VIO pose subscriber*/
-    ros::Subscriber p2dSub_;               /**< 2D pointcloud subscriber*/
+    ros::Subscriber kptSub_;               /**< VIO keyframe subscriber*/
 
     ros::Publisher posePub_;                /**< Publisher for predicted pose*/
-    ros::Publisher p2dPub_;                /**< Publisher for predicted pose*/
+    ros::Publisher p2dPub_;                /**< Publisher for point cloud*/
 
     std::vector<cv::Point2f> curr2D;        /**< current 2D points*/
-
 
     // double calibTime_;      /**< IMU calibration time*/
 

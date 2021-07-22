@@ -143,12 +143,8 @@ public:
         transformPub_ = nh_.advertise<geometry_msgs::TransformStamped>(nodeName + "/viodom_transform", 1);
         kfPub_ = nh_.advertise<visor::kpt>(nodeName + "/viodom_kpt", 1);
 
-        transformPubkf_ = nh_.advertise<geometry_msgs::TransformStamped>(nodeName + "/viodom_kfpose", 1);
-
         if (publishPc_)
             pcPub_ = nh_.advertise<sensor_msgs::PointCloud2>(nodeName + "/point_cloud", 1);
-
-        points2dPub_ = nh_.advertise<sensor_msgs::PointCloud2>(nodeName + "/point2d_cloud", 1);
 
         // Init odometry
         odomInit_ = false;
@@ -581,33 +577,6 @@ private:
     }
 
 
-    /** @brief Publish 6DOF pose from keyframe geometry_msgs::TransformStamped
-     * @param odom Keyframe Odometry transform to be published
-     */
-    void publishkfTf(const tf::Transform& odom) {
-
-        // // Publish TF
-        // tfBr_.sendTransform(
-        //     tf::StampedTransform(odom, ros::Time::now(),
-        //         srcFrameId_, tgtFrameId_));
-
-        // Publish pose
-        geometry_msgs::TransformStamped outTransform;
-        outTransform.header.frame_id = srcFrameId_;
-        outTransform.header.stamp = ros::Time::now();
-        tf::Quaternion qPose = odom.getRotation();
-        outTransform.transform.rotation.x = qPose.x();
-        outTransform.transform.rotation.y = qPose.y();
-        outTransform.transform.rotation.z = qPose.z();
-        outTransform.transform.rotation.w = qPose.w();
-        tf::Vector3 pPose = odom.getOrigin();
-        outTransform.transform.translation.x = pPose.x();
-        outTransform.transform.translation.y = pPose.y();
-        outTransform.transform.translation.z = pPose.z();
-        transformPubkf_.publish(outTransform);
-    }
-
-
     /** @brief Publish 3D point cloud
      * @param[in] header Header for the point cloud message
      */
@@ -629,29 +598,6 @@ private:
 
         // Publish point cloud
         pcPub_.publish(outCloud2);
-    }
-
-
-    /** @brief Publish 2D point cloud
-     * @param[in] header Header for the point cloud message
-     */
-    void publish2DPointCloud(const std::vector<cv::Point3f> pcl2d, const std_msgs::Header header) {
-        // Fill PointCloud message
-        sensor_msgs::PointCloud outCloud;
-        outCloud.points.resize(pcl2d.size());
-        outCloud.header = header;
-        for (size_t i = 0; i < outCloud.points.size(); i++) {
-            outCloud.points[i].x = pcl2d[i].x;
-            outCloud.points[i].y = pcl2d[i].y;
-            outCloud.points[i].z = pcl2d[i].z;
-        }
-
-        // Convert PointCloud to PointCloud2
-        sensor_msgs::PointCloud2 outCloud2;
-        sensor_msgs::convertPointCloudToPointCloud2(outCloud, outCloud2);
-
-        // Publish point cloud
-        points2dPub_.publish(outCloud2);
     }
 
 
@@ -762,8 +708,7 @@ private:
                     // set flag false to prevent keyframe update until data from SLAM node is received
                     updatedPose_ = false;
 
-                    // publish keyframe pose
-                    publishkfTf(odomkf_);
+                    // publish keyframe
                     publishKf(odomkf_, pclC_);
 
                 } else {
@@ -772,9 +717,6 @@ private:
 
                 //Publish transform
                 publishTf(odom_);
-
-                // Publish point cloud - TODO - might remove
-                publish2DPointCloud(pclC_, leftImg->header);
 
                 // Publish current 3D point cloud
                 if (publishPc_)
@@ -817,7 +759,7 @@ private:
             // update the keyframe pose with the corrected pose from slam node
             odomCkf_ = baselink2camera(odomTemp);
 
-            ROS_INFO("UPDATED POSE RECEIVED: ");
+            ROS_INFO("UPDATED POSE RECEIVED: odomCkf_ updated");
 
             // set updated pose flag to true
             updatedPose_ = true;
@@ -935,9 +877,6 @@ private:
     ros::Publisher transformPub_; /**< Publisher for output odometry transform*/
     ros::Publisher pcPub_; /**< Publisher for 3D point cloud*/
     ros::Publisher kfPub_; /**< Publisher for output keyframe*/
-
-    ros::Publisher points2dPub_; /**< Publisher for 2D point projections*/
-    ros::Publisher transformPubkf_; /**< Publisher for output keyframe odometry transform*/
 
     bool odomInit_; /**< Flag to determine whether to perform odometry or not*/
     bool calibInit_; /**< Flag indicating if we have calibration data*/

@@ -12,19 +12,17 @@
 
 int main(int argc, char **argv) {
 
-	std::string pose_topic, p2d_topic;
+	std::string kpt_topic;
 	ros::init(argc, argv, "slam_node");  
   
 	// Read node parameters
 	ros::NodeHandle lnh("~");
-	if(!lnh.getParam("pose_topic", pose_topic))
-        pose_topic = "/pose";
-	if(!lnh.getParam("p2d_topic", p2d_topic))
-        p2d_topic = "/p2d";
+	if(!lnh.getParam("kpt_topic", kpt_topic))
+        kpt_topic = "/kpt";
 
 	// ekf slam instance
 	std::string node_name = "slam_node";
-    EkfSlam ekfSlam(node_name, pose_topic, p2d_topic);
+    EkfSlam ekfSlam(node_name, kpt_topic);
 	
 	// Spin for ever
 	ros::spin();

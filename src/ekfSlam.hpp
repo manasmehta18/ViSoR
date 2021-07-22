@@ -336,7 +336,21 @@ public:
             // Get pose data
             geometry_msgs::TransformStamped uPose;
             uPose = msg->pose;
-                   		
+
+            tf::Quaternion qPose;
+            qPose.setX(uPose.transform.rotation.x);
+            qPose.setY(uPose.transform.rotation.y);
+            qPose.setZ(uPose.transform.rotation.z);
+            qPose.setW(uPose.transform.rotation.w);
+            tf::Vector3 pPose;
+            pPose.setX(uPose.transform.translation.x);
+            pPose.setY(uPose.transform.translation.y);
+            pPose.setZ(uPose.transform.translation.z);
+            tf::Transform odomTemp;
+            odomTemp.setRotation(qPose);
+            odomTemp.setOrigin(pPose);
+
+                 		
 		    // ekf predict step
 		    // predict(msg->angular_velocity.z, msg->angular_velocity.x, msg->angular_velocity.y);
 
@@ -373,11 +387,41 @@ public:
             // update(LIN2GRAV(msg->linear_acceleration.z), LIN2GRAV(msg->linear_acceleration.x), LIN2GRAV(msg->linear_acceleration.y));
 
             // send corrected pose to viodom node
-            posePub_.publish(uPose);
+            tf::Transform updatedOdomC;
+
+            updatedOdomC = odomTemp;
+            publishSlamTf(updatedOdomC);
 
         } else {
             ROS_WARN("No keyframe received!");
         }  
+    }
+
+
+    /** @brief Publish 6DOF updated pose as TF and geometry_msgs::TransformStamped
+     * @param odom Odometry transform to be published
+     */
+    void publishSlamTf(const tf::Transform& odom) {
+
+        // // Publish TF
+        // tfBr_.sendTransform(
+        //     tf::StampedTransform(odom, ros::Time::now(),
+        //         srcFrameId_, tgtFrameId_));
+
+        // Publish pose
+        geometry_msgs::TransformStamped outTransform;
+        outTransform.header.frame_id = "world";
+        outTransform.header.stamp = ros::Time::now();
+        tf::Quaternion qPose = odom.getRotation();
+        outTransform.transform.rotation.x = qPose.x();
+        outTransform.transform.rotation.y = qPose.y();
+        outTransform.transform.rotation.z = qPose.z();
+        outTransform.transform.rotation.w = qPose.w();
+        tf::Vector3 pPose = odom.getOrigin();
+        outTransform.transform.translation.x = pPose.x();
+        outTransform.transform.translation.y = pPose.y();
+        outTransform.transform.translation.z = pPose.z();
+        posePub_.publish(outTransform);
     }
 	
 // protected:

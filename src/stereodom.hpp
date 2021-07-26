@@ -50,6 +50,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include <sensor_msgs/PointCloud.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <sensor_msgs/point_cloud_conversion.h>
+#include <sensor_msgs/image_encodings.h>
 #include <tf/tf.h>
 #include <tf/transform_broadcaster.h>
 #include <string.h>
@@ -536,7 +537,7 @@ private:
      * @param odom Keyframe Odometry transform to be published
      * @param pcl Keyframe point cloud to be published
      */
-    void publishKf(const tf::Transform& odom, const std::vector<cv::Point3f> pcl) {
+    void publishKf(const tf::Transform& odom, const sensor_msgs::Image& imgLeft, const sensor_msgs::Image& imgRight) {
 
         visor::kpt keyPoint;
         keyPoint.header.frame_id = srcFrameId_;
@@ -556,21 +557,28 @@ private:
         keyPoint.pose.transform.translation.y = pPose.y();
         keyPoint.pose.transform.translation.z = pPose.z();
         
+        // // Fill PointCloud message
+        // sensor_msgs::PointCloud outCloud;
+        // outCloud.points.resize(pcl.size());
+        // outCloud.header = keyPoint.header;
+        // for (size_t i = 0; i < outCloud.points.size(); i++) {
+        //     outCloud.points[i].x = pcl[i].x;
+        //     outCloud.points[i].y = pcl[i].y;
+        //     outCloud.points[i].z = pcl[i].z;
+        // }
 
-        // Fill PointCloud message
-        sensor_msgs::PointCloud outCloud;
-        outCloud.points.resize(pcl.size());
-        outCloud.header = keyPoint.header;
-        for (size_t i = 0; i < outCloud.points.size(); i++) {
-            outCloud.points[i].x = pcl[i].x;
-            outCloud.points[i].y = pcl[i].y;
-            outCloud.points[i].z = pcl[i].z;
-        }
+        // // Convert PointCloud to PointCloud2
+        // sensor_msgs::PointCloud2 outCloud2;
+        // sensor_msgs::convertPointCloudToPointCloud2(outCloud, outCloud2);
+        // keyPoint.pc = outCloud2;
 
-        // Convert PointCloud to PointCloud2
-        sensor_msgs::PointCloud2 outCloud2;
-        sensor_msgs::convertPointCloudToPointCloud2(outCloud, outCloud2);
-        keyPoint.pc = outCloud2;
+        // Send left and right images
+        keyPoint.imgL = imgLeft;
+        keyPoint.imgR = imgRight;
+
+        // send camera info for calibiration
+        keyPoint.infoL = leftInfo_;
+        keyPoint.infoR = rightInfo_;
 
         // publish keypoint
         kfPub_.publish(keyPoint);
@@ -709,7 +717,7 @@ private:
                     updatedPose_ = false;
 
                     // publish keyframe
-                    publishKf(odomkf_, pclC_);
+                    publishKf(odomkf_, *leftImg, *rightImg);
 
                 } else {
                     ROS_WARN("WAITING FOR CORRECTED POSE");
@@ -776,6 +784,10 @@ private:
     {
         if (!calibInit_) {
             // Store stereo camera parameters
+
+            leftInfo_ =  (*leftInfo);
+            rightInfo_ = (*rightInfo);
+
             RL_ = cv::Mat(3, 3, CV_64FC1, (void*)leftInfo->R.elems).clone();
             PL_ = cv::Mat(3, 4, CV_64FC1, (void*)leftInfo->P.elems).clone();
             RR_ = cv::Mat(3, 3, CV_64FC1, (void*)rightInfo->R.elems).clone();
@@ -892,6 +904,8 @@ private:
     std::string tgtFrameId_; /**< Target frame for odometry transformation*/
     tf::Transform Tcam22imu0_, Timu02base_; /**< Auxiliary transforms between camera and base_link frames*/
     double kfTrTh_, kfRotTh_; /**< Thresholds to trigger key-frame creation for SBA (translation in meters, rotation in radians)*/
+
+    sensor_msgs::CameraInfo leftInfo_, rightInfo_; /**< Stereo camera info for left and right cameras*/
 
     cv::Mat KL_, PL_, RL_; /**< Stereo camera parameters for left (L) camera*/
     cv::Mat KR_, PR_, RR_; /**< Stereo camera parameters for right (R) camera*/

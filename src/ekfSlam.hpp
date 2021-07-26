@@ -13,6 +13,9 @@
 #include <Eigen/Dense>
 #include <vector>
 #include <visor/kpt.h>
+#include <cv_bridge/cv_bridge.h>
+#include <image_transport/image_transport.h>
+#include <sensor_msgs/Image.h>
 #include "stereodom.hpp"
 
 // Convenient constants
@@ -50,15 +53,41 @@ public:
 
         // Setup data publishers
         posePub_ = nh_.advertise<geometry_msgs::TransformStamped>(nodeName + "/slamPose", 1);
-        p2dPub_ = nh_.advertise<sensor_msgs::PointCloud2>(nodeName + "/point_cloud_2d", 1);
+        pcPub_ = nh_.advertise<sensor_msgs::PointCloud2>(nodeName + "/point_cloud", 1);
 	}
+
+
+     /** @brief Converts images to OpenCV format and rectify both images
+     * @param[in] leftImg Left image in ROS format
+     * @param[in] rightImg Right image in ROS format
+     * @param[out] imgL Rectified left image in OpenCV format
+     * @param[out] imgR Rectified right image in OpenCV format
+     */
+    bool convertRectifyImages(const sensor_msgs::ImageConstPtr& leftImg,
+        const sensor_msgs::ImageConstPtr& rightImg,
+        cv::Mat& imgL, cv::Mat& imgR) {
+        // // Convert to OpenCV format without copy
+        // cv_bridge::CvImageConstPtr cvbLeft, cvbRight;
+        // try {
+        //     cvbLeft = cv_bridge::toCvShare(leftImg);
+        //     cvbRight = cv_bridge::toCvShare(rightImg);
+        // } catch (cv_bridge::Exception& e) {
+        //     ROS_ERROR("cv_bridge exception: %s", e.what());
+        //     return false;
+        // }
+
+        // // Rectify both images
+        // cv::remap(cvbLeft->image, imgL, mapL1_, mapL2_, cv::INTER_LINEAR);
+        // cv::remap(cvbRight->image, imgR, mapR1_, mapR2_, cv::INTER_LINEAR);
+        // return true;
+    }
 
 	
     /** @brief Initialize EKF
      * Input: vector of sensor_msgs::Imu
      * The user must continue calling this function with new gyro data until it returns true
      */
-	bool initialize(void) {
+	bool initialize(const visor::kpt::ConstPtr& msg) {
 		// double gx_m, gy_m, gz_m, gx_m2, gy_m2, gz_m2, gx_d, gy_d, gz_d; 
 		
 		// // Compute mean value and mean square
@@ -126,6 +155,16 @@ public:
 		// }
 		// else
 		// 	return false;
+
+
+        if(msg) {
+            sensor_msgs::CameraInfo leftInfo, rightInfo;
+
+            leftInfo = msg->infoL;
+            rightInfo = msg->infoR;
+
+            ROS_INFO("EKF calibrated");
+        }
 
         init_ = true;
         ROS_INFO("SLAM EKF INITIALIZED");
@@ -327,7 +366,7 @@ public:
 	void kptDataCallback(const visor::kpt::ConstPtr& msg) {
 
         if(!init_) {
-            initialize();
+            initialize(msg);
         }
 
         if(msg) {
@@ -355,34 +394,49 @@ public:
 		    // predict(msg->angular_velocity.z, msg->angular_velocity.x, msg->angular_velocity.y);
 
 
-            // get observations - point cloud
-            sensor_msgs::PointCloud inCloud;
-            sensor_msgs::convertPointCloud2ToPointCloud(msg->pc, inCloud);
+            // // get observations - point cloud
+            // sensor_msgs::PointCloud inCloud;
+            // sensor_msgs::convertPointCloud2ToPointCloud(msg->pc, inCloud);
 
-            curr2D.clear();
-            curr2D.resize(inCloud.points.size());
+            // curr2D.clear();
+            // curr2D.resize(inCloud.points.size());
 
-            for (size_t i = 0; i < inCloud.points.size(); i++) {
-                curr2D[i].x = inCloud.points[i].x;
-                curr2D[i].y = inCloud.points[i].y;
+            // for (size_t i = 0; i < inCloud.points.size(); i++) {
+            //     curr2D[i].x = inCloud.points[i].x;
+            //     curr2D[i].y = inCloud.points[i].y;
+            // }
+
+            // sensor_msgs::PointCloud outCloud;
+            // outCloud.points.resize(curr2D.size());
+            // outCloud.header = msg->header;
+            // for (size_t i = 0; i < outCloud.points.size(); i++) {
+            //     outCloud.points[i].x = curr2D[i].x;
+            //     outCloud.points[i].y = curr2D[i].y;
+            //     outCloud.points[i].z = 0;
+            // }
+
+            // // Convert PointCloud to PointCloud2
+            // sensor_msgs::PointCloud2 outCloud2;
+            // sensor_msgs::convertPointCloudToPointCloud2(outCloud, outCloud2);
+
+            // // Publish point cloud
+            // p2dPub_.publish(outCloud2);
+
+            // get observations - left and right images
+            cv_bridge::CvImagePtr cvL, cvR;
+            cv::Mat imgL, imgR;
+
+            try {
+                cvL = cv_bridge::toCvCopy(msg->imgL);
+                cvR = cv_bridge::toCvCopy(msg->imgR);
+
+            } catch (cv_bridge::Exception& e) {
+                ROS_ERROR("cv_bridge exception: %s", e.what());
             }
 
-            sensor_msgs::PointCloud outCloud;
-            outCloud.points.resize(curr2D.size());
-            outCloud.header = msg->header;
-            for (size_t i = 0; i < outCloud.points.size(); i++) {
-                outCloud.points[i].x = curr2D[i].x;
-                outCloud.points[i].y = curr2D[i].y;
-                outCloud.points[i].z = 0;
-            }
-
-            // Convert PointCloud to PointCloud2
-            sensor_msgs::PointCloud2 outCloud2;
-            sensor_msgs::convertPointCloudToPointCloud2(outCloud, outCloud2);
-
-            // Publish point cloud
-            p2dPub_.publish(outCloud2);
-
+            cv::imshow("yeeee", cvL->image);
+            cv::waitKey(3);
+                
             // ekf update step
             // update(LIN2GRAV(msg->linear_acceleration.z), LIN2GRAV(msg->linear_acceleration.x), LIN2GRAV(msg->linear_acceleration.y));
 
@@ -458,6 +512,67 @@ public:
 		
 //         return boundAngle;
 // 	}
+
+    /** @brief Camera calibration
+     * @param leftInfo Left camera calibration data
+     * @param rightInfo Right camera calibration data
+     */
+    void calibInit(const sensor_msgs::CameraInfo& leftInfo, const sensor_msgs::CameraInfo& rightInfo) {
+        
+        // Store stereo camera parameters
+
+        // RL_ = cv::Mat(3, 3, CV_64FC1, (void*)leftInfo->R.elems).clone();
+        // PL_ = cv::Mat(3, 4, CV_64FC1, (void*)leftInfo->P.elems).clone();
+        // RR_ = cv::Mat(3, 3, CV_64FC1, (void*)rightInfo->R.elems).clone();
+        // PR_ = cv::Mat(3, 4, CV_64FC1, (void*)rightInfo->P.elems).clone();
+
+        // // Obtain the corresponding PL and PR of the downsampled images
+        // PL_.at<double>(0, 0) = PL_.at<double>(0, 0) / (float)downsampling_;
+        // PL_.at<double>(0, 2) = PL_.at<double>(0, 2) / (float)downsampling_;
+        // PL_.at<double>(0, 3) = PL_.at<double>(0, 3) / (float)downsampling_;
+        // PL_.at<double>(1, 1) = PL_.at<double>(1, 1) / (float)downsampling_;
+        // PL_.at<double>(1, 2) = PL_.at<double>(1, 2) / (float)downsampling_;
+        // PR_.at<double>(0, 0) = PR_.at<double>(0, 0) / (float)downsampling_;
+        // PR_.at<double>(0, 2) = PR_.at<double>(0, 2) / (float)downsampling_;
+        // PR_.at<double>(0, 3) = PR_.at<double>(0, 3) / (float)downsampling_;
+        // PR_.at<double>(1, 1) = PR_.at<double>(1, 1) / (float)downsampling_;
+        // PR_.at<double>(1, 2) = PR_.at<double>(1, 2) / (float)downsampling_;
+
+        // // Initialize left and right image remapping (rectification and undistortion)
+        // cv::initUndistortRectifyMap(cv::Mat(3, 3, CV_64FC1, (void*)leftInfo->K.elems),
+        //     cv::Mat(4, 1, CV_64FC1, (void*)leftInfo->D.data()),
+        //     RL_, PL_,
+        //     cv::Size(leftInfo->width / (float)downsampling_, leftInfo->height / (float)downsampling_),
+        //     CV_16SC2, mapL1_, mapL2_);
+        // cv::initUndistortRectifyMap(cv::Mat(3, 3, CV_64FC1, (void*)rightInfo->K.elems),
+        //     cv::Mat(4, 1, CV_64FC1, (void*)rightInfo->D.data()),
+        //     RR_, PR_,
+        //     cv::Size(rightInfo->width / (float)downsampling_, rightInfo->height / (float)downsampling_),
+        //     CV_16SC2, mapR1_, mapR2_);
+
+        // // Store single camera calibration after rectification (no distortion)
+        // KL_ = cv::Mat(3, 3, CV_64FC1);
+        // KL_.at<double>(0, 0) = PL_.at<double>(0, 0);
+        // KL_.at<double>(0, 1) = PL_.at<double>(0, 1);
+        // KL_.at<double>(0, 2) = PL_.at<double>(0, 2);
+        // KL_.at<double>(1, 0) = PL_.at<double>(1, 0);
+        // KL_.at<double>(1, 1) = PL_.at<double>(1, 1);
+        // KL_.at<double>(1, 2) = PL_.at<double>(1, 2);
+        // KL_.at<double>(2, 0) = PL_.at<double>(2, 0);
+        // KL_.at<double>(2, 1) = PL_.at<double>(2, 1);
+        // KL_.at<double>(2, 2) = PL_.at<double>(2, 2);
+        // KR_ = cv::Mat(3, 3, CV_64FC1);
+        // KR_.at<double>(0, 0) = PR_.at<double>(0, 0);
+        // KR_.at<double>(0, 1) = PR_.at<double>(0, 1);
+        // KR_.at<double>(0, 2) = PR_.at<double>(0, 2);
+        // KR_.at<double>(1, 0) = PR_.at<double>(1, 0);
+        // KR_.at<double>(1, 1) = PR_.at<double>(1, 1);
+        // KR_.at<double>(1, 2) = PR_.at<double>(1, 2);
+        // KR_.at<double>(2, 0) = PR_.at<double>(2, 0);
+        // KR_.at<double>(2, 1) = PR_.at<double>(2, 1);
+        // KR_.at<double>(2, 2) = PR_.at<double>(2, 2); 
+
+    }
 	
 
     std::vector<double> SV_;                /* State vector for pose = x, y, theta & map = x,y for 100 landmarks */                
@@ -465,15 +580,20 @@ public:
 
     bool init_;                             /**< Flag indicating if EKF has been initialized*/
     bool pred_;                             /**< Flag indicating if prediction step has been done*/
-    
+
     ros::NodeHandle nh_;                    /**< ROS node handler*/
     ros::Subscriber kptSub_;               /**< VIO keyframe subscriber*/
 
     ros::Publisher posePub_;                /**< Publisher for predicted pose*/
-    ros::Publisher p2dPub_;                /**< Publisher for point cloud*/
+    ros::Publisher pcPub_;                /**< Publisher for point cloud*/
 
     std::vector<cv::Point2f> curr2D;        /**< current 2D points*/
 
+    cv::Mat KL_, PL_, RL_; /**< Stereo camera parameters for left (L) camera*/
+    cv::Mat KR_, PR_, RR_; /**< Stereo camera parameters for right (R) camera*/
+
+    cv::Mat mapL1_, mapL2_, mapR1_, mapR2_; /**< Stereo rectification mappings*/
+    
     // double calibTime_;      /**< IMU calibration time*/
 
     // double T_;                                  /**< IMU KF prediction period*/

@@ -557,21 +557,6 @@ private:
         keyPoint.pose.transform.translation.y = pPose.y();
         keyPoint.pose.transform.translation.z = pPose.z();
         
-        // // Fill PointCloud message
-        // sensor_msgs::PointCloud outCloud;
-        // outCloud.points.resize(pcl.size());
-        // outCloud.header = keyPoint.header;
-        // for (size_t i = 0; i < outCloud.points.size(); i++) {
-        //     outCloud.points[i].x = pcl[i].x;
-        //     outCloud.points[i].y = pcl[i].y;
-        //     outCloud.points[i].z = pcl[i].z;
-        // }
-
-        // // Convert PointCloud to PointCloud2
-        // sensor_msgs::PointCloud2 outCloud2;
-        // sensor_msgs::convertPointCloudToPointCloud2(outCloud, outCloud2);
-        // keyPoint.pc = outCloud2;
-
         // Send left and right images
         keyPoint.imgL = imgLeft;
         keyPoint.imgR = imgRight;

@@ -47,6 +47,8 @@ public:
 		// IMU EKF parameters
         biaDev_ = 0.00001;//0.000001;
         biaTh_ = 0.005; //0.001;
+
+        downsampling_ = 2;
 		
         // Setup data subscribers
         kptSub_ = nh_.subscribe(kptTopic, 10, &EkfSlam::kptDataCallback, this);
@@ -57,32 +59,6 @@ public:
 	}
 
 
-     /** @brief Converts images to OpenCV format and rectify both images
-     * @param[in] leftImg Left image in ROS format
-     * @param[in] rightImg Right image in ROS format
-     * @param[out] imgL Rectified left image in OpenCV format
-     * @param[out] imgR Rectified right image in OpenCV format
-     */
-    bool convertRectifyImages(const sensor_msgs::ImageConstPtr& leftImg,
-        const sensor_msgs::ImageConstPtr& rightImg,
-        cv::Mat& imgL, cv::Mat& imgR) {
-        // // Convert to OpenCV format without copy
-        // cv_bridge::CvImageConstPtr cvbLeft, cvbRight;
-        // try {
-        //     cvbLeft = cv_bridge::toCvShare(leftImg);
-        //     cvbRight = cv_bridge::toCvShare(rightImg);
-        // } catch (cv_bridge::Exception& e) {
-        //     ROS_ERROR("cv_bridge exception: %s", e.what());
-        //     return false;
-        // }
-
-        // // Rectify both images
-        // cv::remap(cvbLeft->image, imgL, mapL1_, mapL2_, cv::INTER_LINEAR);
-        // cv::remap(cvbRight->image, imgR, mapR1_, mapR2_, cv::INTER_LINEAR);
-        // return true;
-    }
-
-	
     /** @brief Initialize EKF
      * Input: vector of sensor_msgs::Imu
      * The user must continue calling this function with new gyro data until it returns true
@@ -163,12 +139,11 @@ public:
             leftInfo = msg->infoL;
             rightInfo = msg->infoR;
 
-            ROS_INFO("EKF calibrated");
+            calibInit(leftInfo, rightInfo);
         }
 
         init_ = true;
         ROS_INFO("SLAM EKF INITIALIZED");
-
 
         return true;
 	}	
@@ -423,18 +398,13 @@ public:
             // p2dPub_.publish(outCloud2);
 
             // get observations - left and right images
-            cv_bridge::CvImagePtr cvL, cvR;
+            // cv_bridge::CvImagePtr cvL, cvR;
             cv::Mat imgL, imgR;
 
-            try {
-                cvL = cv_bridge::toCvCopy(msg->imgL);
-                cvR = cv_bridge::toCvCopy(msg->imgR);
+            if (!convertRectifyImages(msg->imgL, msg->imgR, imgL, imgR))
+                return;
 
-            } catch (cv_bridge::Exception& e) {
-                ROS_ERROR("cv_bridge exception: %s", e.what());
-            }
-
-            cv::imshow("yeeee", cvL->image);
+            cv::imshow("yeeee", imgL);
             cv::waitKey(3);
                 
             // ekf update step
@@ -513,64 +483,97 @@ public:
 //         return boundAngle;
 // 	}
 
-    /** @brief Camera calibration
+
+    /** @brief Converts images to OpenCV format and rectify both images
+     * @param[in] leftImg Left image in ROS format
+     * @param[in] rightImg Right image in ROS format
+     * @param[out] imgL Rectified left image in OpenCV format
+     * @param[out] imgR Rectified right image in OpenCV format
+     */
+    bool convertRectifyImages(const sensor_msgs::Image& leftImg, const sensor_msgs::Image& rightImg, cv::Mat& imgL, cv::Mat& imgR) {
+        // Convert to OpenCV format
+        cv_bridge::CvImageConstPtr cvbLeft, cvbRight;
+        
+        try {
+            cvbLeft = cv_bridge::toCvCopy(leftImg);
+            cvbRight = cv_bridge::toCvCopy(rightImg);
+        } catch (cv_bridge::Exception& e) {
+            ROS_ERROR("cv_bridge exception: %s", e.what());
+            return false;
+        }
+
+        // Rectify both images
+        cv::remap(cvbLeft->image, imgL, mapL1_, mapL2_, cv::INTER_LINEAR);
+        cv::remap(cvbRight->image, imgR, mapR1_, mapR2_, cv::INTER_LINEAR);
+        return true;
+    }
+
+    /** @brief Camera calibration 
      * @param leftInfo Left camera calibration data
      * @param rightInfo Right camera calibration data
      */
-    void calibInit(const sensor_msgs::CameraInfo& leftInfo, const sensor_msgs::CameraInfo& rightInfo) {
-        
-        // Store stereo camera parameters
+    bool calibInit(const sensor_msgs::CameraInfo& leftInfo, const sensor_msgs::CameraInfo& rightInfo) {
 
-        // RL_ = cv::Mat(3, 3, CV_64FC1, (void*)leftInfo->R.elems).clone();
-        // PL_ = cv::Mat(3, 4, CV_64FC1, (void*)leftInfo->P.elems).clone();
-        // RR_ = cv::Mat(3, 3, CV_64FC1, (void*)rightInfo->R.elems).clone();
-        // PR_ = cv::Mat(3, 4, CV_64FC1, (void*)rightInfo->P.elems).clone();
+        try {
 
-        // // Obtain the corresponding PL and PR of the downsampled images
-        // PL_.at<double>(0, 0) = PL_.at<double>(0, 0) / (float)downsampling_;
-        // PL_.at<double>(0, 2) = PL_.at<double>(0, 2) / (float)downsampling_;
-        // PL_.at<double>(0, 3) = PL_.at<double>(0, 3) / (float)downsampling_;
-        // PL_.at<double>(1, 1) = PL_.at<double>(1, 1) / (float)downsampling_;
-        // PL_.at<double>(1, 2) = PL_.at<double>(1, 2) / (float)downsampling_;
-        // PR_.at<double>(0, 0) = PR_.at<double>(0, 0) / (float)downsampling_;
-        // PR_.at<double>(0, 2) = PR_.at<double>(0, 2) / (float)downsampling_;
-        // PR_.at<double>(0, 3) = PR_.at<double>(0, 3) / (float)downsampling_;
-        // PR_.at<double>(1, 1) = PR_.at<double>(1, 1) / (float)downsampling_;
-        // PR_.at<double>(1, 2) = PR_.at<double>(1, 2) / (float)downsampling_;
+            RL_ = cv::Mat(3, 3, CV_64FC1, (void*)leftInfo.R.elems).clone();
+            PL_ = cv::Mat(3, 4, CV_64FC1, (void*)leftInfo.P.elems).clone();
+            RR_ = cv::Mat(3, 3, CV_64FC1, (void*)rightInfo.R.elems).clone();
+            PR_ = cv::Mat(3, 4, CV_64FC1, (void*)rightInfo.P.elems).clone();
 
-        // // Initialize left and right image remapping (rectification and undistortion)
-        // cv::initUndistortRectifyMap(cv::Mat(3, 3, CV_64FC1, (void*)leftInfo->K.elems),
-        //     cv::Mat(4, 1, CV_64FC1, (void*)leftInfo->D.data()),
-        //     RL_, PL_,
-        //     cv::Size(leftInfo->width / (float)downsampling_, leftInfo->height / (float)downsampling_),
-        //     CV_16SC2, mapL1_, mapL2_);
-        // cv::initUndistortRectifyMap(cv::Mat(3, 3, CV_64FC1, (void*)rightInfo->K.elems),
-        //     cv::Mat(4, 1, CV_64FC1, (void*)rightInfo->D.data()),
-        //     RR_, PR_,
-        //     cv::Size(rightInfo->width / (float)downsampling_, rightInfo->height / (float)downsampling_),
-        //     CV_16SC2, mapR1_, mapR2_);
+            // Obtain the corresponding PL and PR of the downsampled images
+            PL_.at<double>(0, 0) = PL_.at<double>(0, 0) / (float)downsampling_;
+            PL_.at<double>(0, 2) = PL_.at<double>(0, 2) / (float)downsampling_;
+            PL_.at<double>(0, 3) = PL_.at<double>(0, 3) / (float)downsampling_;
+            PL_.at<double>(1, 1) = PL_.at<double>(1, 1) / (float)downsampling_;
+            PL_.at<double>(1, 2) = PL_.at<double>(1, 2) / (float)downsampling_;
+            PR_.at<double>(0, 0) = PR_.at<double>(0, 0) / (float)downsampling_;
+            PR_.at<double>(0, 2) = PR_.at<double>(0, 2) / (float)downsampling_;
+            PR_.at<double>(0, 3) = PR_.at<double>(0, 3) / (float)downsampling_;
+            PR_.at<double>(1, 1) = PR_.at<double>(1, 1) / (float)downsampling_;
+            PR_.at<double>(1, 2) = PR_.at<double>(1, 2) / (float)downsampling_;
 
-        // // Store single camera calibration after rectification (no distortion)
-        // KL_ = cv::Mat(3, 3, CV_64FC1);
-        // KL_.at<double>(0, 0) = PL_.at<double>(0, 0);
-        // KL_.at<double>(0, 1) = PL_.at<double>(0, 1);
-        // KL_.at<double>(0, 2) = PL_.at<double>(0, 2);
-        // KL_.at<double>(1, 0) = PL_.at<double>(1, 0);
-        // KL_.at<double>(1, 1) = PL_.at<double>(1, 1);
-        // KL_.at<double>(1, 2) = PL_.at<double>(1, 2);
-        // KL_.at<double>(2, 0) = PL_.at<double>(2, 0);
-        // KL_.at<double>(2, 1) = PL_.at<double>(2, 1);
-        // KL_.at<double>(2, 2) = PL_.at<double>(2, 2);
-        // KR_ = cv::Mat(3, 3, CV_64FC1);
-        // KR_.at<double>(0, 0) = PR_.at<double>(0, 0);
-        // KR_.at<double>(0, 1) = PR_.at<double>(0, 1);
-        // KR_.at<double>(0, 2) = PR_.at<double>(0, 2);
-        // KR_.at<double>(1, 0) = PR_.at<double>(1, 0);
-        // KR_.at<double>(1, 1) = PR_.at<double>(1, 1);
-        // KR_.at<double>(1, 2) = PR_.at<double>(1, 2);
-        // KR_.at<double>(2, 0) = PR_.at<double>(2, 0);
-        // KR_.at<double>(2, 1) = PR_.at<double>(2, 1);
-        // KR_.at<double>(2, 2) = PR_.at<double>(2, 2); 
+            // Initialize left and right image remapping (rectification and undistortion)
+            cv::initUndistortRectifyMap(cv::Mat(3, 3, CV_64FC1, (void*)leftInfo.K.elems),
+                cv::Mat(4, 1, CV_64FC1, (void*)leftInfo.D.data()),
+                RL_, PL_,
+                cv::Size(leftInfo.width / (float)downsampling_, leftInfo.height / (float)downsampling_),
+                CV_16SC2, mapL1_, mapL2_);
+            cv::initUndistortRectifyMap(cv::Mat(3, 3, CV_64FC1, (void*)rightInfo.K.elems),
+                cv::Mat(4, 1, CV_64FC1, (void*)rightInfo.D.data()),
+                RR_, PR_,
+                cv::Size(rightInfo.width / (float)downsampling_, rightInfo.height / (float)downsampling_),
+                CV_16SC2, mapR1_, mapR2_);
+
+            // Store single camera calibration after rectification (no distortion)
+            KL_ = cv::Mat(3, 3, CV_64FC1);
+            KL_.at<double>(0, 0) = PL_.at<double>(0, 0);
+            KL_.at<double>(0, 1) = PL_.at<double>(0, 1);
+            KL_.at<double>(0, 2) = PL_.at<double>(0, 2);
+            KL_.at<double>(1, 0) = PL_.at<double>(1, 0);
+            KL_.at<double>(1, 1) = PL_.at<double>(1, 1);
+            KL_.at<double>(1, 2) = PL_.at<double>(1, 2);
+            KL_.at<double>(2, 0) = PL_.at<double>(2, 0);
+            KL_.at<double>(2, 1) = PL_.at<double>(2, 1);
+            KL_.at<double>(2, 2) = PL_.at<double>(2, 2);
+            KR_ = cv::Mat(3, 3, CV_64FC1);
+            KR_.at<double>(0, 0) = PR_.at<double>(0, 0);
+            KR_.at<double>(0, 1) = PR_.at<double>(0, 1);
+            KR_.at<double>(0, 2) = PR_.at<double>(0, 2);
+            KR_.at<double>(1, 0) = PR_.at<double>(1, 0);
+            KR_.at<double>(1, 1) = PR_.at<double>(1, 1);
+            KR_.at<double>(1, 2) = PR_.at<double>(1, 2);
+            KR_.at<double>(2, 0) = PR_.at<double>(2, 0);
+            KR_.at<double>(2, 1) = PR_.at<double>(2, 1);
+            KR_.at<double>(2, 2) = PR_.at<double>(2, 2);
+
+            ROS_INFO("Slam node calibration succeded!");
+            return true;
+
+        } catch (...) {
+            ROS_WARN("Slam node calibration failed!");
+            return false;
+        }
 
     }
 	
@@ -591,6 +594,8 @@ public:
 
     cv::Mat KL_, PL_, RL_; /**< Stereo camera parameters for left (L) camera*/
     cv::Mat KR_, PR_, RR_; /**< Stereo camera parameters for right (R) camera*/
+
+    int downsampling_; /**< Downsampling factor for the input images*/
 
     cv::Mat mapL1_, mapL2_, mapR1_, mapR2_; /**< Stereo rectification mappings*/
     

@@ -17,18 +17,31 @@
 #include <image_transport/image_transport.h>
 #include <sensor_msgs/Image.h>
 #include "stereodom.hpp"
+#include "robustmatcher.hpp"
 
 // Convenient constants
 #define RAD2DEG(X) ( (X) * 57.2957795131)
 #define DEG2RAD(X) ( (X) * 0.01745329251)
 #define LIN2GRAV(X) ( (X) * 0.10197162)
 
+
+/**
+ * @brief Keypoint comparison auxiliar function to sort the sets of keypoints
+ * according to their score
+ * @param p1 The first keypoint
+ * @param p2 The second keypoint
+ * @return Boolean true if p1 > p2
+ */
+bool score_comparator1(const cv::KeyPoint& p1, const cv::KeyPoint& p2) {
+    return p1.response > p2.response;
+}
+
 /**
  * @class EkfSlam
  * @brief calculates robot's pose and simultaneously creates a map of the environment
  */
-class EkfSlam
-{
+class EkfSlam {
+
 public:
 	
     /** @brief Constructor
@@ -38,16 +51,18 @@ public:
      */
     EkfSlam(std::string& nodeName, std::string& kptTopic) {
         init_ = false;
-        // T_ = T;
-        // T2_ = T*T;
 
         // Declare state vector
         SV_ = std::vector<double>(403);
 
-		// IMU EKF parameters
+        fDetector_ = cv::FastFeatureDetector::create(/*5*/);
+        fExtractor_ = cv::xfeatures2d::BriefDescriptorExtractor::create(16 /*32*/);
+
+		// EKF parameters
         biaDev_ = 0.00001;//0.000001;
         biaTh_ = 0.005; //0.001;
 
+        // initialize downsampling 
         downsampling_ = 2;
 		
         // Setup data subscribers
@@ -60,50 +75,11 @@ public:
 
 
     /** @brief Initialize EKF
-     * Input: vector of sensor_msgs::Imu
+     * Input: visor::kpt::ConstPtr keyframe
      * The user must continue calling this function with new gyro data until it returns true
      */
 	bool initialize(const visor::kpt::ConstPtr& msg) {
-		// double gx_m, gy_m, gz_m, gx_m2, gy_m2, gz_m2, gx_d, gy_d, gz_d; 
-		
-		// // Compute mean value and mean square
-		// gx_m = gy_m = gz_m = gx_m2 = gy_m2 = gz_m2 = 0.0;
-        // for(int i = 0; i < (int)calibData_.size(); i++)
-		// {
-        //     gx_m += calibData_[i].angular_velocity.x;
-        //     gy_m += calibData_[i].angular_velocity.y;
-        //     gz_m += calibData_[i].angular_velocity.z;
-        //     gx_m2 += calibData_[i].angular_velocity.x*calibData_[i].angular_velocity.x;
-        //     gy_m2 += calibData_[i].angular_velocity.y*calibData_[i].angular_velocity.y;
-        //     gz_m2 += calibData_[i].angular_velocity.z*calibData_[i].angular_velocity.z;
-		// }
-        // gx_m = gx_m/(double)calibData_.size();
-        // gy_m = gy_m/(double)calibData_.size();
-        // gz_m = gz_m/(double)calibData_.size();
-        // gx_m2 = gx_m2/(double)calibData_.size();
-        // gy_m2 = gy_m2/(double)calibData_.size();
-        // gz_m2 = gz_m2/(double)calibData_.size();
-		// //std::cout << "gxM: " << gx_m << ", gyM: " << gy_m << ", gzM: " << gz_m << std::endl;
-		
-		// // Compute standar deviation of gyros
-		// gx_d = sqrt(gx_m2-gx_m*gx_m);
-		// gy_d = sqrt(gy_m2-gy_m*gy_m);
-		// gz_d = sqrt(gz_m2-gz_m*gz_m);
-		// //std::cout << "gxDev: " << gx_d << ", gyDev: " << gy_d << ", gzDev: " << gz_d << std::endl;
-		
-		// // Initalize compass calibration
-        // magCal_[0] = magXs_; magCal_[1] = magYs_; magCal_[2] = magZs_;
-        // magCal_[3] = magXo_; magCal_[4] = magYo_; magCal_[5] = magZo_;
-		
-		// // Initialize sensor variances
-        // accVar_[0] = accDev_*accDev_; 	accVar_[1] = accDev_*accDev_; 	accVar_[2] = accDev_*accDev_;		// Variance in g
-        // gyrVar_[0] = gyrDev_*gyrDev_; gyrVar_[1] = gyrDev_*gyrDev_; gyrVar_[2] = gyrDev_*gyrDev_;	// Variance in rad/s
-        // magVar_[0] = magDev_*magDev_; 	magVar_[1] = magDev_*magDev_; 	magVar_[2] = magDev_*magDev_;	// Variance in mGaus wth data normalized to 1
-        // biaVar_[0] = biaDev_*biaDev_; biaVar_[1] = biaDev_*biaDev_; biaVar_[2] = biaDev_*biaDev_;	// Variance in rad/s
-		
-		// // Initialize accelerometer threshold
-        // accTh_ = sqrt(accVar_[0]+accVar_[1]+accVar_[2]);
-		
+	
 		// // Initialize state vector x = [rx, ry, rz, gbx, gby, gbz]
         // rx_ = ry_ = rz_ = 0.0;
         // gbx_ = gx_m;
@@ -122,17 +98,6 @@ public:
         // P_(4,4) = biaVar_[1];
         // P_(5,5) = biaVar_[2];*/
 		
-        // if(gx_d < biaTh_ && gy_d < biaTh_ && gz_d < biaTh_)
-		// {
-        //     init_ = true;
-        //     ROS_INFO("IMU filter initialized");
-		
-		// 	return true;
-		// }
-		// else
-		// 	return false;
-
-
         if(msg) {
             sensor_msgs::CameraInfo leftInfo, rightInfo;
 
@@ -153,39 +118,7 @@ public:
 //      * @param[in] gy Raw Y gyro data (rad/s)
 //      * @param[in] gz Raw Z gyro data (rad/s)
 //      */
-// 	bool predict(double gx, double gy, double gz)
-// 	{
-// 		// Check initialization 
-//         if(!init_)
-// 			return false;
-		
-// 		// Compute matrix F 
-// 		Eigen::Matrix<double, 6, 6> F;
-//         F(0,0) = 1, F(0,1) = 0, F(0,2) = 0, F(0,3) = -T_, F(0,4) = 0,   F(0,5) = 0;
-//         F(1,0) = 0, F(1,1) = 1, F(1,2) = 0, F(1,3) = 0,  F(1,4) = -T_,  F(1,5) = 0;
-//         F(2,0) = 0, F(2,1) = 0, F(2,2) = 1, F(2,3) = 0,  F(2,4) = 0,   F(2,5) = -T_;
-// 		F(3,0) = 0, F(3,1) = 0, F(3,2) = 0, F(3,3) = 1,  F(3,4) = 0,   F(3,5) = 0;
-// 		F(4,0) = 0, F(4,1) = 0, F(4,2) = 0, F(4,3) = 0,  F(4,4) = 1,   F(4,5) = 0;
-// 		F(5,0) = 0, F(5,1) = 0, F(5,2) = 0, F(5,3) = 0,  F(5,4) = 0,   F(5,5) = 1;
-
-// 		// Update covariance matrix
-//         P_ = F*P_*F.transpose();
-//         P_(0,0) += gyrVar_[0]*T2_;
-//         P_(1,1) += gyrVar_[1]*T2_;
-//         P_(2,2) += gyrVar_[2]*T2_;
-//         P_(3,3) += biaVar_[0]*T_;
-//         P_(4,4) += biaVar_[1]*T_;
-//         P_(5,5) += biaVar_[2]*T_;
-		
-// 		// Update state vector
-//         rx_ += T_*(gx - gbx_);
-//         ry_ += T_*(gy - gby_);
-//         rz_ += T_*(gz - gbz_);
-
-
-        // pred_ = true;
-														
-// 		return true; 
+// 	bool predict(double gx, double gy, double gz) {
 // 	}
 
 //     /** EKF update stage based on accelerometer information
@@ -196,144 +129,9 @@ public:
 //      * @param[in] my Raw Y magnetometer data ()
 //      * @param[in] mz Raw Z magnetometer data ()
 //      */
-// 	bool update(double ax, double ay, double az, double mx, double my, double mz)
-// 	{
-// 		double crx, srx, cry, sry, crz, srz, mod, y[5], hx, hy;
-		
-// 		// Check initialization 
-//         if(!init_)
-// 			return false;
-		
-// 		// Remove distortion and normalize magnetometer
-//         mx = (mx - magCal_[3])/magCal_[0];
-//         my = (my - magCal_[4])/magCal_[1];
-//         mz = (mz - magCal_[5])/magCal_[2];
-// 		mod = sqrt(mx*mx + my*my + mz*mz);
-// 		mx /= mod;
-// 		my /= mod;
-// 		mz /= mod;
-		
-// 		// Pre-compute constants
-//         crx = cos(rx_);
-//         cry = cos(ry_);
-//         crz = cos(rz_);
-//         srx = sin(rx_);
-//         sry = sin(ry_);
-//         srz = sin(rz_);
-		
-// 		// Create measurement jacobian H
-// 		Eigen::Matrix<double, 5, 6> H;
-// 		H(0,0) = 0;			H(0,1) = cry;		H(0,2) = 0; 	H(0,3) = 0; H(0,4) = 0; H(0,5) = 0;
-// 		H(1,0) = -crx*cry; 	H(1,1) = srx*sry; 	H(1,2) = 0; 	H(1,3) = 0; H(1,4) = 0; H(1,5) = 0;
-// 		H(2,0) = cry*srx;	H(2,1) = crx*sry;	H(2,2) = 0; 	H(2,3) = 0; H(2,4) = 0; H(2,5) = 0;
-// 		H(3,0) = 0;			H(3,1) = 0;			H(3,2) = -srz; 	H(3,3) = 0; H(3,4) = 0; H(3,5) = 0;
-// 		H(4,0) = 0;			H(4,1) = 0;			H(4,2) = -crz; 	H(4,3) = 0; H(4,4) = 0; H(4,5) = 0;
-		
-//         // Compute measurement noise jacobian R
-// 		Eigen::Matrix<double, 5, 5> R;
-// 		mod = fabs(sqrt(ax*ax + ay*ay + az*az)-1);
-// 		R.setZero(5, 5);
-//         R(0,0) = accVar_[0];
-//         R(1,1) = accVar_[1];
-//         R(2,2) = accVar_[2];
-//         R(3,3) = magVar_[0];
-//         R(4,4) = magVar_[1];
-//         if(mod > accTh_)
-// 		{
-// 			R(0,0) += 1.5*mod*mod;
-// 			R(1,1) += 1.5*mod*mod;
-// 			R(2,2) += 1.5*mod*mod;
-// 		}
-		
-// 		// Compute innovation matrix
-// 		Eigen::Matrix<double, 5, 5> S;
-//         S = H*P_*H.transpose()+R;
-		
-//         // Compute Kalman gain
-// 		Eigen::Matrix<double, 6, 5> K; 
-//         K = P_*H.transpose()*S.inverse();
-		
-// 		// Compute mean error
-// 		hx = mx*cry + mz*crx*sry + my*srx*sry;
-// 		hy = my*crx - mz*srx;
-// 		mod = sqrt(hx*hx+hy*hy);
-// 		y[0] = ax-sry;
-// 		y[1] = ay+cry*srx;
-// 		y[2] = az+crx*cry;
-// 		y[3] = hx/mod-crz;
-// 		y[4] = hy/mod+srz;
-		
-// 		// Compute new state vector
-//         rx_ += K(0,0)*y[0]+K(0,1)*y[1]+K(0,2)*y[2]+K(0,3)*y[3]+K(0,4)*y[4];
-//         ry_ += K(1,0)*y[0]+K(1,1)*y[1]+K(1,2)*y[2]+K(1,3)*y[3]+K(1,4)*y[4];
-//         rz_ += K(2,0)*y[0]+K(2,1)*y[1]+K(2,2)*y[2]+K(2,3)*y[3]+K(2,4)*y[4];
-//         gbx_ += K(3,0)*y[0]+K(3,1)*y[1]+K(3,2)*y[2]+K(3,3)*y[3]+K(3,4)*y[4];
-//         gby_ += K(4,0)*y[0]+K(4,1)*y[1]+K(4,2)*y[2]+K(4,3)*y[3]+K(4,4)*y[4];
-//         gbz_ += K(5,0)*y[0]+K(5,1)*y[1]+K(5,2)*y[2]+K(5,3)*y[3]+K(5,4)*y[4];
-		
-// 		// Compute new covariance matrix
-// 		Eigen::Matrix<double, 6, 6> I;
-// 		I.setIdentity(6, 6);
-//         P_ = (I-K*H)*P_;
-		
-// 		return true;
+// 	bool update(double ax, double ay, double az, double mx, double my, double mz) {
 // 	}
 	
-//     /** @brief Get estimated Euler angles in radians interval [-PI,PI] rad
-//      * @param[out] rx Estimated roll (rad)
-//      * @param[out] ry Estimated pitch (rad)
-//      * @param[out] rz Estimated yaw (rad)
-//      */
-//     bool getAngles(double &rx, double &ry, double &rz)
-// 	{
-//         rx = Pi2PiRange(rx_);
-//         ry = Pi2PiRange(ry_);
-//         rz = Pi2PiRange(rz_);
-// 		return true;
-// 	}
-
-//     /** @brief Get estimated integrated Euler angles since last reset
-//      * @param[out] rx Estimated integrated roll (rad)
-//      * @param[out] ry Estimated integrated pitch (rad)
-//      * @param[out] rz Estimated integrated yaw (rad)
-//      */
-//     bool getAngleIntegration(double &irx, double &iry, double &irz)
-//     {
-//         irx = irx_;
-//         iry = iry_;
-//         irz = irz_;
-//         return true;
-//     }
-
-//     /** @brief Reset integrated angles
-//      */
-//     bool resetAngleIntegration(void)
-//     {
-//         irx_ = iry_ = irz_ = 0.0;
-//         return true;
-//     }
-
-//     /** @brief Get estimated gyro biases in rad/s
-//      * @param[out] gbx Estimated X gyro bias (rad/s)
-//      * @param[out] gby Estimated Y gyro bias (rad/s)
-//      * @param[out] gbz Estimated Z gyro bias (rad/s)
-//      */
-//     bool getBIAS(double &gbx, double &gby, double &gbz)
-// 	{
-//         gbx = gbx_;
-//         gby = gby_;
-//         gbz = gbz_;
-		
-// 		return true;
-// 	}
-	
-//     /** @brief IMU initialization return function
-//      * @return Returns true if IMU initialized
-//      */
-// 	bool isInit(void)
-// 	{
-//         return init_;
-// 	}
 
     /** pose data callback
      * @param[in] msg TransformStamped data message
@@ -398,15 +196,8 @@ public:
             // p2dPub_.publish(outCloud2);
 
             // get observations - left and right images
-            // cv_bridge::CvImagePtr cvL, cvR;
-            cv::Mat imgL, imgR;
+            generateLandmarks(msg->imgL, msg->imgR);
 
-            if (!convertRectifyImages(msg->imgL, msg->imgR, imgL, imgR))
-                return;
-
-            cv::imshow("yeeee", imgL);
-            cv::waitKey(3);
-                
             // ekf update step
             // update(LIN2GRAV(msg->linear_acceleration.z), LIN2GRAV(msg->linear_acceleration.x), LIN2GRAV(msg->linear_acceleration.y));
 
@@ -419,6 +210,65 @@ public:
         } else {
             ROS_WARN("No keyframe received!");
         }  
+    }
+
+
+    /** @brief generate landmarks from left and right images
+     * @param leftImg Left image
+     * @param rightImg Right image
+     */
+    void generateLandmarks(const sensor_msgs::Image& leftImg, const sensor_msgs::Image& rightImg) {
+        double flow = 0.0;
+
+        // Convert to OpenCV format and rectify both images
+        cv::Mat imgL, imgR;
+        if (!convertRectifyImages(leftImg, rightImg, imgL, imgR))
+            return;
+
+        cv::imshow("Left Image", imgL);
+        cv::imshow("Right Image", imgR);
+        cv::waitKey(3);
+
+        // Detect key-points in the images
+        kptsLeftC_.clear();
+        kptsRightC_.clear();
+        selectKeypoints(imgL, imgR, kptsLeftC_, kptsRightC_);
+        // std::cout << "Keypoints: left (" << kptsLeftC_.size() << "), right (" << kptsRightC_.size() << ")\n";
+
+        // Extract feature descriptors
+        extractDescriptors(imgL, imgR, kptsLeftC_, kptsRightC_, descLeftC_, descRightC_);
+
+        // Stereo matching and 3D point cloud generation
+        pclC_.clear();
+        stereoMatchesC_.clear();
+        if (!stereoMatching(kptsLeftC_, kptsRightC_, descLeftC_, descRightC_, stereoMatchesC_, pclC_))
+            return;
+        //std::cout << "Stereo matches: " stereoMatchesC_.size() << std::endl;
+
+        publishPointCloud(pclC_, leftImg.header);
+    }
+
+    /** @brief Publish 3D point cloud
+     * @param[in] header Header for the point cloud message
+     */
+    void publishPointCloud(const std::vector<cv::Point3f> pcl, const std_msgs::Header header)
+    {
+        // Fill PointCloud message
+        sensor_msgs::PointCloud outCloud;
+        outCloud.points.resize(pcl.size());
+        outCloud.header = header;
+        for (size_t i = 0; i < outCloud.points.size(); i++) {
+            outCloud.points[i].x = pcl[i].x;
+            outCloud.points[i].y = pcl[i].y;
+            outCloud.points[i].z = pcl[i].z;
+        }
+
+        // Convert PointCloud to PointCloud2
+        sensor_msgs::PointCloud2 outCloud2;
+        sensor_msgs::convertPointCloudToPointCloud2(outCloud, outCloud2);
+
+        // Publish point cloud
+        pcPub_.publish(outCloud2);
     }
 
 
@@ -447,41 +297,6 @@ public:
         outTransform.transform.translation.z = pPose.z();
         posePub_.publish(outTransform);
     }
-	
-// protected:
-
-//     /** @brief Round down absolute function
-//      * @param[in] value Input value
-//      * @return Input value floored
-//      */
-//     double floorAbsolute( double value )
-// 	{
-// 	  if (value < 0.0)
-// 		return ceil( value );
-// 	  else
-// 		return floor( value );
-// 	}
-
-//     /** @brief Convert angles into interval [-PI,PI] rad
-//      * @param[in] contAngle Input angle (rad)
-//      * @return Input angle in interval [-PI,PI] rad
-//      */
-//     double Pi2PiRange(double contAngle)
-// 	{
-//         double boundAngle = 0.0;
-//         if(fabs(contAngle)<=M_PI)
-//             boundAngle= contAngle;
-// 		else
-// 		{
-//             if(contAngle > M_PI)
-//                 boundAngle = (contAngle-2*M_PI) - 2*M_PI*floorAbsolute((contAngle-M_PI)/(2*M_PI));
-			
-//             if(contAngle < - M_PI)
-//                 boundAngle = (contAngle+2*M_PI) - 2*M_PI*floorAbsolute((contAngle+M_PI)/(2*M_PI));
-// 		}
-		
-//         return boundAngle;
-// 	}
 
 
     /** @brief Converts images to OpenCV format and rectify both images
@@ -505,6 +320,100 @@ public:
         // Rectify both images
         cv::remap(cvbLeft->image, imgL, mapL1_, mapL2_, cv::INTER_LINEAR);
         cv::remap(cvbRight->image, imgR, mapR1_, mapR2_, cv::INTER_LINEAR);
+        return true;
+    }
+
+    /** @brief Detects key-points in the images
+     * Key-points are sorted based on their score to get the best maxFeatures_
+     * Features are included in buckets in order to force sparseness
+     * @param[in] imgLeft Left image
+     * @param[in] imgRight Right image
+     * @param[out] keypointsLeft Key-points extracted from left image
+     * @param[out] keypointsRight Key-points extracted from right image
+     */
+    void selectKeypoints(cv::Mat& imgLeft, cv::Mat& imgRight,
+        std::vector<cv::KeyPoint>& keypointsLeft,
+        std::vector<cv::KeyPoint>& keypointsRight)
+    {
+        // Detect key-points in both images
+        std::vector<cv::KeyPoint> kptsL, kptsR;
+        fDetector_->detect(imgLeft, kptsL);
+        fDetector_->detect(imgRight, kptsR);
+
+        // Sort keypoints according to their score
+        std::sort(kptsL.begin(), kptsL.end(), score_comparator1);
+        std::sort(kptsR.begin(), kptsR.end(), score_comparator1);
+
+        // // Distribute maxFeatures_ in buckets
+        // const int width = imgLeft.cols;
+        // const int height = imgLeft.rows;
+        // kptsBucketing(kptsL, keypointsLeft, width, height);
+        // kptsBucketing(kptsR, keypointsRight, width, height);
+
+        keypointsLeft = kptsL;
+        keypointsRight = kptsR;
+    }
+
+    /** @brief Extract feature descriptors from image key-points
+     * @param[in] imgLeft Left image
+     * @param[in] imgRight Right image
+     * @param[in] keypointsLeft Key-points extracted from left image
+     * @param[in] keypointsRight Key-points extracted from right image
+     * @param[out] descriptorsLeft Feature descriptors for key-points from left image
+     * @param[out] descriptorsRight Feature descriptors for key-points from right image
+     */
+    void extractDescriptors(cv::Mat& imgL, cv::Mat& imgR,
+        std::vector<cv::KeyPoint>& keypointsLeft,
+        std::vector<cv::KeyPoint>& keypointsRight,
+        cv::Mat& descriptorsLeft, cv::Mat& descriptorsRight)
+    {
+        fExtractor_->compute(imgL, keypointsLeft, descriptorsLeft);
+        fExtractor_->compute(imgR, keypointsRight, descriptorsRight);
+    }
+
+    /** @brief Match key-points L-R descriptors and generate 3D point cloud
+     * @param[in] keypointsLeft Key-points extracted from left image
+     * @param[in] keypointsRight Key-points extracted from right image
+     * @param[in] descriptorsLeft Feature descriptors for key-points from left image
+     * @param[in] descriptorsRight Feature descriptors for key-points from right image
+     * @param[out] stereoMatches Resulting matches between features
+     * @param[out] pcl Resulting 3D point cloud based on stereo matches between features
+     */
+    bool stereoMatching(std::vector<cv::KeyPoint>& keypointsLeft,
+        std::vector<cv::KeyPoint>& keypointsRight,
+        cv::Mat& descriptorsLeft, cv::Mat& descriptorsRight,
+        std::vector<cv::DMatch>& stereoMatches, std::vector<cv::Point3f>& pcl)
+    {
+        std::vector<cv::DMatch> matches;
+        try {
+            matcher_.match(keypointsRight, descriptorsRight, keypointsLeft, descriptorsLeft,
+                matches, false);
+        } catch (std::exception e) {
+            ROS_ERROR("Matching error!");
+            return false;
+        }
+
+        // Generate stereo point cloud
+        float f = PR_.at<double>(0, 0), cx = PR_.at<double>(0, 2), cy = PR_.at<double>(1, 2), b = -PR_.at<double>(0, 3) / f;
+        float d, k1 = 1 / f, k2 = f * b;
+        for (size_t i = 0; i < matches.size(); i++) {
+            const cv::DMatch& match = matches[i];
+            const cv::Point2f& pL = keypointsLeft[match.trainIdx].pt;
+            const cv::Point2f& pR = keypointsRight[match.queryIdx].pt;
+            d = pL.x - pR.x;
+            // If key-points y-coords are close enough (stabilized in roll,pitch)
+            // and x-coords are far enough (sufficient disparity), it's a match!
+            if (fabs(pR.y - pL.y) <= 5 && d > 2.0) {
+                stereoMatches.push_back(match);
+
+                // Calculate 3D point
+                cv::Point3f p;
+                p.z = k2 / d;
+                p.x = (pL.x - cx) * p.z * k1;
+                p.y = (pL.y - cy) * p.z * k1;
+                pcl.push_back(p);
+            }
+        }
         return true;
     }
 
@@ -576,6 +485,18 @@ public:
         }
 
     }
+
+
+    std::vector<cv::KeyPoint> kptsLeftC_, kptsRightC_; /**< Stored current (C) keypoints for left and right images*/
+    cv::Mat descLeftC_, descRightC_; /**< Stored current (C) descriptors for left and right images*/
+
+    cv::Ptr<cv::FastFeatureDetector> fDetector_; /**< Feature detector (FAST)*/
+    cv::Ptr<cv::xfeatures2d::BriefDescriptorExtractor> fExtractor_; /**< Feature decriptor extractor (BRIEF)*/
+
+    RobustMatcher matcher_; /**< Matcher*/
+
+    std::vector<cv::DMatch> stereoMatchesC_; /**< Matching results for current(C) stereo pairs*/
+    std::vector<cv::Point3f> pclC_; /**< Stored current(C) 3D point cloud*/
 	
 
     std::vector<double> SV_;                /* State vector for pose = x, y, theta & map = x,y for 100 landmarks */                

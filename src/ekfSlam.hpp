@@ -18,6 +18,7 @@
 #include <sensor_msgs/Image.h>
 #include "stereodom.hpp"
 #include "robustmatcher.hpp"
+#include "landmark.hpp"
 
 // Convenient constants
 #define RAD2DEG(X) ( (X) * 57.2957795131)
@@ -203,35 +204,6 @@ public:
                  		
 		    // ekf predict step
 		    // predict(msg->angular_velocity.z, msg->angular_velocity.x, msg->angular_velocity.y);
-
-
-            // // get observations - point cloud
-            // sensor_msgs::PointCloud inCloud;
-            // sensor_msgs::convertPointCloud2ToPointCloud(msg->pc, inCloud);
-
-            // curr2D.clear();
-            // curr2D.resize(inCloud.points.size());
-
-            // for (size_t i = 0; i < inCloud.points.size(); i++) {
-            //     curr2D[i].x = inCloud.points[i].x;
-            //     curr2D[i].y = inCloud.points[i].y;
-            // }
-
-            // sensor_msgs::PointCloud outCloud;
-            // outCloud.points.resize(curr2D.size());
-            // outCloud.header = msg->header;
-            // for (size_t i = 0; i < outCloud.points.size(); i++) {
-            //     outCloud.points[i].x = curr2D[i].x;
-            //     outCloud.points[i].y = curr2D[i].y;
-            //     outCloud.points[i].z = 0;
-            // }
-
-            // // Convert PointCloud to PointCloud2
-            // sensor_msgs::PointCloud2 outCloud2;
-            // sensor_msgs::convertPointCloudToPointCloud2(outCloud, outCloud2);
-
-            // // Publish point cloud
-            // p2dPub_.publish(outCloud2);
 
             // get observations - left and right images
             generateLandmarks(msg->imgL, msg->imgR);
@@ -548,7 +520,8 @@ public:
     ros::Publisher posePub_;                /**< Publisher for predicted pose*/
     ros::Publisher pcPub_;                /**< Publisher for point cloud*/
 
-    std::vector<cv::Point2f> curr2D;        /**< current 2D points*/
+    std::vector<Landmark> lmrksC_;          /**< current landmarks*/
+    std::vector<Landmark> map;              /**< map of landmarks*/
 
     cv::Mat KL_, PL_, RL_; /**< Stereo camera parameters for left (L) camera*/
     cv::Mat KR_, PR_, RR_; /**< Stereo camera parameters for right (R) camera*/

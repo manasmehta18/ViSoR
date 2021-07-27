@@ -64,6 +64,8 @@ public:
 
         // initialize downsampling 
         downsampling_ = 2;
+
+        maxFeatures_ = 600;
 		
         // Setup data subscribers
         kptSub_ = nh_.subscribe(kptTopic, 10, &EkfSlam::kptDataCallback, this);
@@ -112,6 +114,42 @@ public:
 
         return true;
 	}	
+
+    /** @brief Distribute maxFeatures_ among all buckets.
+     * We are considering 6 buckets organized in 2 rows and 3 columns.
+     * @param[in] srcKpts Sorted key-points
+     * @param[out] dstKpts Output bucketed key-points
+     * @param[in] width Image width (cols)
+     * @param[in] height Image height (rows)
+     */
+    void kptsBucketing(std::vector<cv::KeyPoint>& srcKpts, std::vector<cv::KeyPoint>& dstKpts,
+        int width, int height) {
+        const int maxFeatBuck = maxFeatures_ / 6;
+        int buckets[6] = { maxFeatBuck, maxFeatBuck, maxFeatBuck, maxFeatBuck, maxFeatBuck, maxFeatBuck };
+        for (size_t i = 0; i < srcKpts.size(); i++) {
+            int id;
+
+            // Check keypoint y coord
+            if (srcKpts[i].pt.y <= height / 2)
+                id = 0;
+            else
+                id = 3;
+
+            // Check keypoint x coord
+            if (srcKpts[i].pt.x <= width / 3)
+                id += 0;
+            else if (srcKpts[i].pt.x <= 2 * width / 3)
+                id += 1;
+            else
+                id += 2;
+
+            // Assign to corresponding bucket
+            if (buckets[id] > 0) {
+                buckets[id]--;
+                dstKpts.push_back(srcKpts[i]);
+            }
+        }
+    }
 	
 //     /** EKF prediction stage based on gyro information
 //      * @param[in] gx Raw X gyro data (rad/s)
@@ -344,14 +382,14 @@ public:
         std::sort(kptsL.begin(), kptsL.end(), score_comparator1);
         std::sort(kptsR.begin(), kptsR.end(), score_comparator1);
 
-        // // Distribute maxFeatures_ in buckets
-        // const int width = imgLeft.cols;
-        // const int height = imgLeft.rows;
-        // kptsBucketing(kptsL, keypointsLeft, width, height);
-        // kptsBucketing(kptsR, keypointsRight, width, height);
+        // Distribute maxFeatures_ in buckets
+        const int width = imgLeft.cols;
+        const int height = imgLeft.rows;
+        kptsBucketing(kptsL, keypointsLeft, width, height);
+        kptsBucketing(kptsR, keypointsRight, width, height);
 
-        keypointsLeft = kptsL;
-        keypointsRight = kptsR;
+        // keypointsLeft = kptsL;
+        // keypointsRight = kptsR;
     }
 
     /** @brief Extract feature descriptors from image key-points
@@ -498,7 +536,6 @@ public:
     std::vector<cv::DMatch> stereoMatchesC_; /**< Matching results for current(C) stereo pairs*/
     std::vector<cv::Point3f> pclC_; /**< Stored current(C) 3D point cloud*/
 	
-
     std::vector<double> SV_;                /* State vector for pose = x, y, theta & map = x,y for 100 landmarks */                
     Eigen::Matrix<double, 6, 603> CM_;      /**< Covariance matrix*/
 
@@ -517,6 +554,7 @@ public:
     cv::Mat KR_, PR_, RR_; /**< Stereo camera parameters for right (R) camera*/
 
     int downsampling_; /**< Downsampling factor for the input images*/
+    int maxFeatures_; /**< Maximum number of features to find in each bucket*/
 
     cv::Mat mapL1_, mapL2_, mapR1_, mapR2_; /**< Stereo rectification mappings*/
     

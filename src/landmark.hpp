@@ -25,11 +25,28 @@ class Landmark {
 public:
     /** @brief Constructor
      */
-    Landmark(void) {}
+    Landmark(cv::KeyPoint kpt, cv::Point3f locRel, cv::Point3f locGlob) {
+        this->kpt = kpt;
+        this->locRel = locRel;
+        this->locGlob = locGlob;
+    }
+
+    cv::KeyPoint getKpt(void) {
+        return this->kpt;
+    }
+
+    cv::Point3f getLocRel(void) {
+        return this->locRel;
+    }
+
+    cv::Point3f getLocGlob(void) {
+        return this->locGlob;
+    }
 
 private:
     cv::KeyPoint kpt;       /**< keypoint of the landmark*/
-    cv::Point3f loc;            /**< 3D location of the landmark*/
+    cv::Point3f locRel;            /**< 3D location of the landmark relative to the pose*/
+    cv::Point3f locGlob;           /**< 3D global location of the landmark*/
 };
 
 #endif

@@ -15,6 +15,9 @@
 #include <visor/kpt.h>
 #include <cv_bridge/cv_bridge.h>
 #include <image_transport/image_transport.h>
+#include <sensor_msgs/PointCloud.h>
+#include <sensor_msgs/PointCloud2.h>
+#include <sensor_msgs/point_cloud_conversion.h>
 #include <sensor_msgs/Image.h>
 #include "stereodom.hpp"
 #include "robustmatcher.hpp"
@@ -63,10 +66,9 @@ public:
         biaDev_ = 0.00001;//0.000001;
         biaTh_ = 0.005; //0.001;
 
-        // initialize downsampling 
+        // initialize hyperparameters 
         downsampling_ = 2;
-
-        maxFeatures_ = 600;
+        maxFeatures_ = 50;
 		
         // Setup data subscribers
         kptSub_ = nh_.subscribe(kptTopic, 10, &EkfSlam::kptDataCallback, this);
@@ -203,7 +205,7 @@ public:
 
                  		
 		    // ekf predict step
-		    // predict(msg->angular_velocity.z, msg->angular_velocity.x, msg->angular_velocity.y);
+		    // predict(odomTemp);
 
             // get observations - left and right images
             generateLandmarks(msg->imgL, msg->imgR);
@@ -229,6 +231,7 @@ public:
      */
     void generateLandmarks(const sensor_msgs::Image& leftImg, const sensor_msgs::Image& rightImg) {
         double flow = 0.0;
+        lmrksC_.clear();
 
         // Convert to OpenCV format and rectify both images
         cv::Mat imgL, imgR;
@@ -422,8 +425,21 @@ public:
                 p.x = (pL.x - cx) * p.z * k1;
                 p.y = (pL.y - cy) * p.z * k1;
                 pcl.push_back(p);
+
+                cv::Point3f gp;
+                gp.x = 0;
+                gp.y = 0;
+                gp.z = 0;
+
+                lmrksC_.push_back(Landmark(keypointsLeft[match.trainIdx], p, gp));
             }
         }
+
+        // ROS_INFO_STREAM("Number of landmarks (" << lmrksC_.size() << ")");
+        // ROS_INFO_STREAM("landmark kpt (" << lmrksC_[0].getKpt().pt << ")");
+        // ROS_INFO_STREAM("landmark location (" << lmrksC_[0].getLocRel() << ")");
+        // ROS_INFO_STREAM("3D landmark location (" << lmrksC_[0].getLocGlob() << ")");
+
         return true;
     }
 

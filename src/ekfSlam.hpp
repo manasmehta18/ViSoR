@@ -56,9 +56,6 @@ public:
     EkfSlam(std::string& nodeName, std::string& kptTopic) {
         init_ = false;
 
-        // Declare state vector
-        SV_ = std::vector<double>(403);
-
         fDetector_ = cv::FastFeatureDetector::create(/*5*/);
         fExtractor_ = cv::xfeatures2d::BriefDescriptorExtractor::create(16 /*32*/);
 
@@ -68,7 +65,7 @@ public:
 
         // initialize hyperparameters 
         downsampling_ = 2;
-        maxFeatures_ = 50;
+        maxFeatures_ = 100;
 		
         // Setup data subscribers
         kptSub_ = nh_.subscribe(kptTopic, 10, &EkfSlam::kptDataCallback, this);
@@ -85,11 +82,9 @@ public:
      */
 	bool initialize(const visor::kpt::ConstPtr& msg) {
 	
-		// // Initialize state vector x = [rx, ry, rz, gbx, gby, gbz]
-        // rx_ = ry_ = rz_ = 0.0;
-        // gbx_ = gx_m;
-        // gby_ = gy_m;
-        // gbz_ = gz_m;
+		// Initialize state vector CV_ = [x, y, z, lix, liy ...]
+        SV_ = std::vector<double>(203, 0.0);
+        // ROS_INFO_STREAM("State Vector: initialized (" << SV_[202] << ")");
 		
 		// // Initialize covariance matrix
         // P_.setIdentity(6, 6);
@@ -154,13 +149,16 @@ public:
         }
     }
 	
-//     /** EKF prediction stage based on gyro information
-//      * @param[in] gx Raw X gyro data (rad/s)
-//      * @param[in] gy Raw Y gyro data (rad/s)
-//      * @param[in] gz Raw Z gyro data (rad/s)
-//      */
-// 	bool predict(double gx, double gy, double gz) {
-// 	}
+    /** EKF prediction stage based on pose data from viodom
+     * @param[in] gx Raw X gyro data (rad/s)
+     */
+	bool predict(tf::Transform pose) {
+
+        // SV_[0] = pose.getOrigin().x;
+        // SV_[1] = pose.getOrigin().y;
+        // SV_[2] = pose.getOrigin().z;
+
+	}
 
 //     /** EKF update stage based on accelerometer information
 //      * @param[in] ax Raw X accelerometer data (g)
@@ -205,7 +203,7 @@ public:
 
                  		
 		    // ekf predict step
-		    // predict(odomTemp);
+		    predict(odomTemp);
 
             // get observations - left and right images
             generateLandmarks(msg->imgL, msg->imgR);

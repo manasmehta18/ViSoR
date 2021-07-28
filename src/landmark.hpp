@@ -9,13 +9,7 @@
 #ifndef __LANDMARK_H__
 #define __LANDMARK_H__
 
-
 #include <opencv2/opencv.hpp>
-#include <cv_bridge/cv_bridge.h>
-#include <opencv2/imgproc/imgproc.hpp>
-#include <opencv2/highgui/highgui.hpp>
-#include <opencv2/xfeatures2d.hpp>
-#include <opencv2/features2d.hpp>
 
 /**
  * @class Landmark
@@ -31,14 +25,20 @@ public:
         this->locGlob = locGlob;
     }
 
+    /** @brief get the keypoint for the current landmark
+     */
     cv::KeyPoint getKpt(void) {
         return this->kpt;
     }
 
+    /** @brief get the relative 3D location of the current landmark
+     */
     cv::Point3f getLocRel(void) {
         return this->locRel;
     }
 
+    /** @brief get the global 3D location of the current landmark
+     */
     cv::Point3f getLocGlob(void) {
         return this->locGlob;
     }

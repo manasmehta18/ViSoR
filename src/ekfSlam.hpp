@@ -149,7 +149,7 @@ public:
     }
 	
     /** EKF prediction stage based on pose data from viodom
-     * @param[in] pose Predcited pose from  X gyro data (rad/s)
+     * @param[in] pose Predcited pose from viodom 
      */
 	bool predict(tf::Transform pose) {
 

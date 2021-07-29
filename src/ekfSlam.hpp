@@ -84,8 +84,7 @@ public:
 	
 		// Initialize state vector CV_ = [x, y, z, lix, liy ...]
         SV_ = std::vector<double>(203, 0.0);
-        // ROS_INFO_STREAM("State Vector: initialized (" << SV_[202] << ")");
-		
+        
 		// // Initialize covariance matrix
         // P_.setIdentity(6, 6);
         // P_(0,0) = M_PI_2;
@@ -154,9 +153,11 @@ public:
      */
 	bool predict(tf::Transform pose) {
 
-        // SV_[0] = pose.getOrigin().x;
-        // SV_[1] = pose.getOrigin().y;
-        // SV_[2] = pose.getOrigin().z;
+        SV_[0] = pose.getOrigin().getX();
+        SV_[1] = pose.getOrigin().getY();
+        SV_[2] = pose.getOrigin().getZ();
+
+        ROS_INFO_STREAM("State Vector: new pose (" << SV_[0] << "," << SV_[1] << "," << SV_[2] << ","<< ")");
 
 	}
 

@@ -154,16 +154,21 @@ public:
      */
 	bool predict(tf::Transform pose, tf::Transform dist) {
 
+        // ut = g(ut, ct)
         SV_[0] = pose.getOrigin().getX();
         SV_[1] = pose.getOrigin().getY();
         SV_[2] = pose.getOrigin().getZ();
-        SV_[3] = dist.getOrigin().getX();
-        SV_[4] = dist.getOrigin().getY();
-        SV_[5] = dist.getOrigin().getZ();
+
+        // Gt = g(ct)
+        // dynamic velocity jacobian
+
+        // SV_[3] = dist.getOrigin().getX();
+        // SV_[4] = dist.getOrigin().getY();
+        // SV_[5] = dist.getOrigin().getZ();
 
         ROS_INFO_STREAM("State Vector: new pose (" << SV_[0] << "," << SV_[1] << "," << SV_[2] << ","<< ")");
-        ROS_INFO_STREAM("State Vector: pose change (" << SV_[3] << "," << SV_[4] << "," << SV_[5] << ","<< ")");
-
+        // ROS_INFO_STREAM("State Vector: pose change (" << SV_[3] << "," << SV_[4] << "," << SV_[5] << ","<< ")");
+        
 	}
 
 //     /** EKF update stage based on accelerometer information

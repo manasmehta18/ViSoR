@@ -537,7 +537,7 @@ private:
      * @param odom Keyframe Odometry transform to be published
      * @param pcl Keyframe point cloud to be published
      */
-    void publishKf(const tf::Transform& odom, const sensor_msgs::Image& imgLeft, const sensor_msgs::Image& imgRight) {
+    void publishKf(const tf::Transform& odom, const tf::Transform& dist, const sensor_msgs::Image& imgLeft, const sensor_msgs::Image& imgRight) {
 
         visor::kpt keyPoint;
         keyPoint.header.frame_id = srcFrameId_;
@@ -556,6 +556,20 @@ private:
         keyPoint.pose.transform.translation.x = pPose.x();
         keyPoint.pose.transform.translation.y = pPose.y();
         keyPoint.pose.transform.translation.z = pPose.z();
+
+        // displacement data
+        keyPoint.dist.header = keyPoint.header;
+
+        tf::Quaternion qDist = dist.getRotation();
+        keyPoint.dist.transform.rotation.x = qDist.x();
+        keyPoint.dist.transform.rotation.y = qDist.y();
+        keyPoint.dist.transform.rotation.z = qDist.z();
+        keyPoint.dist.transform.rotation.w = qDist.w();
+
+        tf::Vector3 pDist = dist.getOrigin();
+        keyPoint.dist.transform.translation.x = pDist.x();
+        keyPoint.dist.transform.translation.y = pDist.y();
+        keyPoint.dist.transform.translation.z = pDist.z();
         
         // Send left and right images
         keyPoint.imgL = imgLeft;
@@ -693,8 +707,9 @@ private:
                     odomCkf_ = odomC_;
                     imgL.copyTo(imgCkf_);
 
-                    // send keyframe pose to slam node
+                    // send keyframe pose and pose change to slam node
                     odomkf_ = camera2baselink(odomCkf_);
+                    deltaTKf_ = camera2baselink(deltaT.inverse());
                     
                     updatePreviousStuff(imgL, imgR);
 
@@ -702,7 +717,7 @@ private:
                     updatedPose_ = false;
 
                     // publish keyframe
-                    publishKf(odomkf_, *leftImg, *rightImg);
+                    publishKf(odomkf_, deltaTKf_, *leftImg, *rightImg);
 
                 } else {
                     ROS_WARN("WAITING FOR CORRECTED POSE");
@@ -897,7 +912,7 @@ private:
 
     cv::Mat mapL1_, mapL2_, mapR1_, mapR2_; /**< Stereo rectification mappings*/
 
-    tf::Transform odom_, odomkf_, odomC_, odomCkf_; /**< Odometry matrices in camera and base_link frames*/
+    tf::Transform odom_, odomkf_, deltaTKf_, odomC_, odomCkf_; /**< Odometry matrices in camera and base_link frames*/
     cv::Mat imgC_, imgCkf_; /**< Current and key-frame images*/
     cv::Mat imgRP_, imgLP_; /**< Previous right(R) and left(L) images*/
 

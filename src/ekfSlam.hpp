@@ -149,15 +149,20 @@ public:
     }
 	
     /** EKF prediction stage based on pose data from viodom
-     * @param[in] pose Predcited pose from viodom 
+     * @param[in] pose Predicted pose from viodom 
+     * @param[in] dist Pose change between previous and current frame calculated using PnP-RANSAC 
      */
-	bool predict(tf::Transform pose) {
+	bool predict(tf::Transform pose, tf::Transform dist) {
 
         SV_[0] = pose.getOrigin().getX();
         SV_[1] = pose.getOrigin().getY();
         SV_[2] = pose.getOrigin().getZ();
+        SV_[3] = dist.getOrigin().getX();
+        SV_[4] = dist.getOrigin().getY();
+        SV_[5] = dist.getOrigin().getZ();
 
         ROS_INFO_STREAM("State Vector: new pose (" << SV_[0] << "," << SV_[1] << "," << SV_[2] << ","<< ")");
+        ROS_INFO_STREAM("State Vector: pose change (" << SV_[3] << "," << SV_[4] << "," << SV_[5] << ","<< ")");
 
 	}
 
@@ -202,9 +207,26 @@ public:
             odomTemp.setRotation(qPose);
             odomTemp.setOrigin(pPose);
 
-                 		
+
+            // Get displacement data
+            geometry_msgs::TransformStamped uDist;
+            uDist = msg->dist;
+
+            tf::Quaternion qDist;
+            qDist.setX(uDist.transform.rotation.x);
+            qDist.setY(uDist.transform.rotation.y);
+            qDist.setZ(uDist.transform.rotation.z);
+            qDist.setW(uDist.transform.rotation.w);
+            tf::Vector3 pDist;
+            pDist.setX(uDist.transform.translation.x);
+            pDist.setY(uDist.transform.translation.y);
+            pDist.setZ(uDist.transform.translation.z);
+            tf::Transform distTemp;
+            distTemp.setRotation(qDist);
+            distTemp.setOrigin(pDist);
+
 		    // ekf predict step
-		    predict(odomTemp);
+		    predict(odomTemp, distTemp);
 
             // get observations - left and right images
             generateLandmarks(msg->imgL, msg->imgR);

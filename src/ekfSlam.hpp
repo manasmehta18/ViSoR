@@ -73,6 +73,8 @@ public:
         // Setup data publishers
         posePub_ = nh_.advertise<geometry_msgs::TransformStamped>(nodeName + "/slamPose", 1);
         pcPub_ = nh_.advertise<sensor_msgs::PointCloud2>(nodeName + "/point_cloud", 1);
+
+        deltaT_ = 1.0;
 	}
 
 
@@ -82,10 +84,12 @@ public:
      */
 	bool initialize(const visor::kpt::ConstPtr& msg) {
 	
-		// Initialize state vector CV_ = [x, y, z, lix, liy ...]
-        SV_ = std::vector<double>(203, 0.0);
+		// Initialize state vector CV_
+        SV_ = std::vector<double>(314, 0.0);
+
+        // Initialize covariance matrix
+        CM_.setIdentity(314, 314);
         
-		// // Initialize covariance matrix
         // P_.setIdentity(6, 6);
         // P_(0,0) = M_PI_2;
         // P_(1,1) = M_PI_2;
@@ -154,11 +158,30 @@ public:
      */
 	bool predict(tf::Transform pose, tf::Transform dist) {
 
-        // ut = g(ut, ct)
+        // ut/t-1 = fv(ut-1/t-1, ct, nt)
+        
+        // pose translation vector
         SV_[0] = pose.getOrigin().getX();
         SV_[1] = pose.getOrigin().getY();
         SV_[2] = pose.getOrigin().getZ();
+        
+        // pose rotation quaternion
+        SV_[3] = pose.getRotation().getW();
+        SV_[4] = pose.getRotation().getX();
+        SV_[5] = pose.getRotation().getY();
+        SV_[6] = pose.getRotation().getZ();
 
+        // linear velocity vector 
+        SV_[7] = pose.getOrigin().getX() / deltaT_;
+        SV_[8] = pose.getOrigin().getY() / deltaT_;
+        SV_[9] = pose.getOrigin().getZ() / deltaT_;
+
+        // angular velocity quaternion
+        SV_[10] = pose.getRotation().getW() / deltaT_;
+        SV_[11] = pose.getRotation().getX() / deltaT_;
+        SV_[12] = pose.getRotation().getY() / deltaT_;
+        SV_[13] = pose.getRotation().getZ() / deltaT_;
+        
         // Gt = g(ct)
         // dynamic velocity jacobian
 
@@ -551,7 +574,7 @@ public:
     std::vector<cv::Point3f> pclC_; /**< Stored current(C) 3D point cloud*/
 	
     std::vector<double> SV_;                /* State vector for pose = x, y, theta & map = x,y for 100 landmarks */                
-    Eigen::Matrix<double, 6, 603> CM_;      /**< Covariance matrix*/
+    Eigen::MatrixXd CM_;      /**< Covariance matrix*/
 
     bool init_;                             /**< Flag indicating if EKF has been initialized*/
     bool pred_;                             /**< Flag indicating if prediction step has been done*/
@@ -575,7 +598,7 @@ public:
     
     // double calibTime_;      /**< IMU calibration time*/
 
-    // double T_;                                  /**< IMU KF prediction period*/
+    double deltaT_;                                /**< time elapsed since last EKF iteration*/
     // double T2_;                                 /**< Squared IMU KF prediction period*/
     // double rx_, ry_, rz_, gbx_, gby_, gbz_;     /**< IMU KF state vector x = [rx, ry, rz, gbx, gby, gbz]*/
     // Eigen::MatrixXd P_;                         /**< IMU KF matrix*/

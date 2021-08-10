@@ -87,8 +87,13 @@ public:
 		// Initialize state vector CV_
         SV_ = std::vector<double>(314, 0.0);
 
-        // Initialize covariance matrix
+        // Initialize covariance matrices
         CM_.setIdentity(314, 314);
+        CM_.setZero();
+        Q_.setIdentity(314, 314);
+        Q_.setZero();
+        R_.setIdentity(314, 314);
+        R_.setZero();
         
         // P_.setIdentity(6, 6);
         // P_(0,0) = M_PI_2;
@@ -183,14 +188,31 @@ public:
         SV_[13] = pose.getRotation().getZ() / deltaT_;
         
         // Gt = g(ct)
-        // dynamic velocity jacobian
+        // motion jacobian
 
-        // SV_[3] = dist.getOrigin().getX();
-        // SV_[4] = dist.getOrigin().getY();
-        // SV_[5] = dist.getOrigin().getZ();
+        // temporary bias matrices
+        Eigen::MatrixXd B1, B2;
+        B1.setIdentity(14, 314);
+        B2.setIdentity(314, 14);
 
-        ROS_INFO_STREAM("State Vector: new pose (" << SV_[0] << "," << SV_[1] << "," << SV_[2] << ","<< ")");
-        // ROS_INFO_STREAM("State Vector: pose change (" << SV_[3] << "," << SV_[4] << "," << SV_[5] << ","<< ")");
+        for(int i = 0; i < 14; i++) {
+            for(int j = 0; j < 314; j++) {
+                B1(i,j) = 100;
+                B2(j,i) = 100;
+            }
+        }
+
+        // add bias to bias matrix Q
+        Q_.block<14,314>(0,0) = B1;
+        Q_.block<314,14>(0,0) = B2;
+
+        // ROS_INFO_STREAM("CM (" << CM_(0,0) << "," << CM_(0,313) << "," << CM_(313,313) << "," << CM_(313,0) << ")");
+
+        // update covariance matrix
+        CM_ += Q_;
+
+        // ROS_INFO_STREAM("State Vector: new pose (" << SV_[0] << "," << SV_[1] << "," << SV_[2] << ","<< ")");
+        ROS_INFO_STREAM("CM(" << CM_(0,0) << "," << CM_(0,313) << "," << CM_(313,313) << "," << CM_(313,0) << ")");
         
 	}
 
@@ -574,7 +596,9 @@ public:
     std::vector<cv::Point3f> pclC_; /**< Stored current(C) 3D point cloud*/
 	
     std::vector<double> SV_;                /* State vector for pose = x, y, theta & map = x,y for 100 landmarks */                
-    Eigen::MatrixXd CM_;      /**< Covariance matrix*/
+    Eigen::MatrixXd CM_;                    /**< Covariance matrix*/
+    Eigen::MatrixXd Q_;                    /**< Motion Bias Covariance matrix*/
+    Eigen::MatrixXd R_;                    /**< Observation Bias Covariance matrix*/
 
     bool init_;                             /**< Flag indicating if EKF has been initialized*/
     bool pred_;                             /**< Flag indicating if prediction step has been done*/

@@ -65,7 +65,7 @@ public:
 
         // initialize hyperparameters 
         downsampling_ = 2;
-        maxFeatures_ = 100;
+        maxFeatures_ = 30;
 		
         // Setup data subscribers
         kptSub_ = nh_.subscribe(kptTopic, 10, &EkfSlam::kptDataCallback, this);
@@ -95,17 +95,6 @@ public:
         R_.setIdentity(314, 314);
         R_.setZero();
         
-        // P_.setIdentity(6, 6);
-        // P_(0,0) = M_PI_2;
-        // P_(1,1) = M_PI_2;
-        // P_(2,2) = M_PI_2;
-        // P_(3,3) = 0.01*0.01;
-        // P_(4,4) = 0.01*0.01;
-        // P_(5,5) = 0.01*0.01;
-        // /*P_(3,3) = biaVar_[0];
-        // P_(4,4) = biaVar_[1];
-        // P_(5,5) = biaVar_[2];*/
-		
         if(msg) {
             sensor_msgs::CameraInfo leftInfo, rightInfo;
 
@@ -213,19 +202,41 @@ public:
 
         // ROS_INFO_STREAM("State Vector: new pose (" << SV_[0] << "," << SV_[1] << "," << SV_[2] << ","<< ")");
         ROS_INFO_STREAM("CM(" << CM_(0,0) << "," << CM_(0,313) << "," << CM_(313,313) << "," << CM_(313,0) << ")");
-        
+
+        return true;
 	}
 
-//     /** EKF update stage based on accelerometer information
-//      * @param[in] ax Raw X accelerometer data (g)
-//      * @param[in] ay Raw Y accelerometer data (g)
-//      * @param[in] az Raw Z accelerometer data (g)
-//      * @param[in] mx Raw X magnetometer data ()
-//      * @param[in] my Raw Y magnetometer data ()
-//      * @param[in] mz Raw Z magnetometer data ()
-//      */
-// 	bool update(double ax, double ay, double az, double mx, double my, double mz) {
-// 	}
+    /** EKF update stage
+     */
+	bool update() {
+
+        for(std::vector<Landmark>::iterator lm = lmrksC_.begin(); lm != lmrksC_.end(); ++lm) {
+
+            if(map.size() == 0) {
+                // get relative landmark location
+                cv::Point3f rp;
+                rp.x = (*lm).getLocRel().x;
+                rp.y = (*lm).getLocRel().y;
+                rp.z = (*lm).getLocRel().z;
+
+                // set global landmark location as gp = relative location + predicted pose;
+                cv::Point3f gp;
+                gp.x = rp.x + SV_[0];
+                gp.y = rp.y + SV_[1];
+                gp.z = rp.z + SV_[2];
+
+                // generate landmark and add it to the map
+                Landmark nlm = Landmark((*lm).getKpt(), rp, gp);      
+
+                map.push_back((nlm));
+
+            } else {
+                ROS_INFO_STREAM("Yeetus(" << map[0].getLocGlob() << ")");
+            }
+        }
+
+        return true;
+	}
 	
 
     /** pose data callback
@@ -282,7 +293,7 @@ public:
             generateLandmarks(msg->imgL, msg->imgR);
 
             // ekf update step
-            // update(LIN2GRAV(msg->linear_acceleration.z), LIN2GRAV(msg->linear_acceleration.x), LIN2GRAV(msg->linear_acceleration.y));
+            update();
 
             // send corrected pose to viodom node
             tf::Transform updatedOdomC;

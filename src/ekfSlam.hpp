@@ -14,6 +14,7 @@
 #include <vector>
 #include <cstdlib>
 #include <ctime>
+#include <cmath>
 #include <visor/kpt.h>
 #include <cv_bridge/cv_bridge.h>
 #include <image_transport/image_transport.h>
@@ -77,6 +78,7 @@ public:
         pcPub_ = nh_.advertise<sensor_msgs::PointCloud2>(nodeName + "/point_cloud", 1);
 
         deltaT_ = 1.0;
+        simTh_ = 1.0;
 	}
 
 
@@ -111,12 +113,14 @@ public:
         init_ = true;
         ROS_INFO("SLAM EKF INITIALIZED");
 
+        observedL_ = false;
+
         return true;
 	}
 
     /** @brief generate landmark with global location for the map using the current observed landmarks
      * @param[in] landmarkC current observed landmark
-     * @return landmarkM landmark for storing in the map
+     * @return landmark for storing in the map
      */
     Landmark mapLandmarkCreator(Landmark& landmarkC) {
 
@@ -243,17 +247,72 @@ public:
      */
 	bool update() {
 
-        for(std::vector<Landmark>::iterator lm = lmrksC_.begin(); lm != lmrksC_.end(); ++lm) {
+        // iterate through every observed landmark
+        for(std::vector<Landmark>::iterator lmc = lmrksC_.begin(); lmc != lmrksC_.end(); ++lmc) {
 
+            // index of current landmark in the map and the covariance matrix
+            int lmIndex = 0;
+
+            // initialize landmark for the map
+            Landmark nlm = mapLandmarkCreator((*lmc));
+
+            // if map is empty, add the first landmark
             if(map.size() == 0) {
-                // generate landmark and add it to the map
-                Landmark nlm = mapLandmarkCreator((*lm));
+
+                // add landmark to the map
                 map.push_back(nlm);
                 numLandmarks_ = 1;
 
+                // TODO: add to state vector as well
+
             } else {
+
+                double minEucDist = 10000.0;
+                Landmark minLm = nlm;
+                int minIndex = 0;
+                int index = 0;
+
+                // iterate through every landmark stored in the map
+                for(std::vector<Landmark>::iterator lmm = map.begin(); lmm != map.end(); ++lmm) {
+
+                    // calculate euclidean distance between points
+                    double eucDist = std::sqrt((nlm.getLocGlob().x - (*lmm).getLocGlob().x)*(nlm.getLocGlob().x - (*lmm).getLocGlob().x) 
+                                                 + (nlm.getLocGlob().y - (*lmm).getLocGlob().y)*(nlm.getLocGlob().y - (*lmm).getLocGlob().y)
+                                                 + (nlm.getLocGlob().z - (*lmm).getLocGlob().z)*(nlm.getLocGlob().z - (*lmm).getLocGlob().z));
+
+                    // get min euclidean distance and corresponding landmark
+                    if(eucDist < minEucDist) {
+                        minEucDist = eucDist;
+                        minLm = (*lmm);
+                        minIndex = index;
+                    } 
+
+                    index += 1;
+                }
+
+                // landmark observed before
+                if (minEucDist < simTh_) {
+
+                    lmIndex = minIndex;
+
+                    // TODO: global loc of nlm = global loc of minLm
+
+                    //TODO: update location of current landmark with global location from the map
+
+                } else {
+
+                    // unobserved landmark - add to the map
+                    map.push_back(nlm);
+                    lmIndex = numLandmarks_;
+                    numLandmarks_ += 1;
+                }
     
-                ROS_INFO_STREAM("Yeetus(" << map[0].getLocGlob() << ")");
+                ROS_INFO_STREAM("Yeetus(" << numLandmarks_ << ")");
+
+                // lmIndex = location of current landmark in the map
+                // lmIndex * 3 = location of current landmark in SV and CM 
+
+                // TODO: observation model, kalman gain, and CV, CM updates
             }
         }
 
@@ -635,6 +694,7 @@ public:
 
     bool init_;                                                     /**< Flag indicating if EKF has been initialized*/
     bool pred_;                                                     /**< Flag indicating if prediction step has been done*/
+    bool observedL_;                                                /**< Flag indicating if current landmark was observed before*/
 
     ros::NodeHandle nh_;                                            /**< ROS node handler*/
     ros::Subscriber kptSub_;                                        /**< VIO keyframe subscriber*/
@@ -658,6 +718,7 @@ public:
     int numLandmarks_;                                               /**< number of landmarks in the map*/                    
 
     double deltaT_;                                                 /**< time elapsed since last EKF iteration*/
+    double simTh_;                                                  /**< similarity threshold for landmark global locations*/
 };
 
 #endif

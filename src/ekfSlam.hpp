@@ -12,6 +12,8 @@
 #include <Eigen/Core>
 #include <Eigen/Dense>
 #include <vector>
+#include <cstdlib>
+#include <ctime>
 #include <visor/kpt.h>
 #include <cv_bridge/cv_bridge.h>
 #include <image_transport/image_transport.h>
@@ -60,8 +62,8 @@ public:
         fExtractor_ = cv::xfeatures2d::BriefDescriptorExtractor::create(16 /*32*/);
 
 		// EKF parameters
-        biaDev_ = 0.00001;//0.000001;
-        biaTh_ = 0.005; //0.001;
+        // biaDev_ = 0.00001;//0.000001;
+        // biaTh_ = 0.005; //0.001;
 
         // initialize hyperparameters 
         downsampling_ = 2;
@@ -103,6 +105,8 @@ public:
 
             calibInit(leftInfo, rightInfo);
         }
+
+        numFeatures_ = 0;
 
         init_ = true;
         ROS_INFO("SLAM EKF INITIALIZED");
@@ -153,6 +157,11 @@ public:
 	bool predict(tf::Transform pose, tf::Transform dist) {
 
         // ut/t-1 = fv(ut-1/t-1, ct, nt)
+
+        // get deltaT
+        ros::Time timeC = ros::Time::now();
+        deltaT_ = (timeC - timeP_).toSec();
+        timeP_ = timeC;
         
         // pose translation vector
         SV_[0] = pose.getOrigin().getX();
@@ -184,10 +193,13 @@ public:
         B1.setIdentity(14, 314);
         B2.setIdentity(314, 14);
 
+        // add random bias to the bias matrices
+        std::srand(std::time(0));
+
         for(int i = 0; i < 14; i++) {
             for(int j = 0; j < 314; j++) {
-                B1(i,j) = 100;
-                B2(j,i) = 100;
+                B1(i,j) = std::rand() % 100 + 1;
+                B2(j,i) = std::rand() % 100 + 1;
             }
         }
 
@@ -595,51 +607,47 @@ public:
     }
 
 
-    std::vector<cv::KeyPoint> kptsLeftC_, kptsRightC_; /**< Stored current (C) keypoints for left and right images*/
-    cv::Mat descLeftC_, descRightC_; /**< Stored current (C) descriptors for left and right images*/
+    std::vector<cv::KeyPoint> kptsLeftC_, kptsRightC_;              /**< Stored current (C) keypoints for left and right images*/
+    cv::Mat descLeftC_, descRightC_;                                /**< Stored current (C) descriptors for left and right images*/
 
-    cv::Ptr<cv::FastFeatureDetector> fDetector_; /**< Feature detector (FAST)*/
+    cv::Ptr<cv::FastFeatureDetector> fDetector_;                    /**< Feature detector (FAST)*/
     cv::Ptr<cv::xfeatures2d::BriefDescriptorExtractor> fExtractor_; /**< Feature decriptor extractor (BRIEF)*/
 
-    RobustMatcher matcher_; /**< Matcher*/
+    RobustMatcher matcher_;                                         /**< Matcher*/
 
-    std::vector<cv::DMatch> stereoMatchesC_; /**< Matching results for current(C) stereo pairs*/
-    std::vector<cv::Point3f> pclC_; /**< Stored current(C) 3D point cloud*/
+    std::vector<cv::DMatch> stereoMatchesC_;                        /**< Matching results for current(C) stereo pairs*/
+    std::vector<cv::Point3f> pclC_;                                 /**< Stored current(C) 3D point cloud*/
 	
-    std::vector<double> SV_;                /* State vector for pose = x, y, theta & map = x,y for 100 landmarks */                
-    Eigen::MatrixXd CM_;                    /**< Covariance matrix*/
-    Eigen::MatrixXd Q_;                    /**< Motion Bias Covariance matrix*/
-    Eigen::MatrixXd R_;                    /**< Observation Bias Covariance matrix*/
+    std::vector<double> SV_;                                        /* State vector for pose & map of 100 landmarks */                
+    Eigen::MatrixXd CM_;                                            /**< Covariance matrix*/
+    Eigen::MatrixXd Q_;                                             /**< Motion Bias Covariance matrix*/
+    Eigen::MatrixXd R_;                                             /**< Observation Bias Covariance matrix*/
 
-    bool init_;                             /**< Flag indicating if EKF has been initialized*/
-    bool pred_;                             /**< Flag indicating if prediction step has been done*/
+    bool init_;                                                     /**< Flag indicating if EKF has been initialized*/
+    bool pred_;                                                     /**< Flag indicating if prediction step has been done*/
 
-    ros::NodeHandle nh_;                    /**< ROS node handler*/
-    ros::Subscriber kptSub_;               /**< VIO keyframe subscriber*/
+    ros::NodeHandle nh_;                                            /**< ROS node handler*/
+    ros::Subscriber kptSub_;                                        /**< VIO keyframe subscriber*/
 
-    ros::Publisher posePub_;                /**< Publisher for predicted pose*/
-    ros::Publisher pcPub_;                /**< Publisher for point cloud*/
+    ros::Publisher posePub_;                                        /**< Publisher for predicted pose*/
+    ros::Publisher pcPub_;                                          /**< Publisher for point cloud*/
 
-    std::vector<Landmark> lmrksC_;          /**< current landmarks*/
-    std::vector<Landmark> map;              /**< map of landmarks*/
+    ros::Time timeP_;                                               /**< previous time*/
 
-    cv::Mat KL_, PL_, RL_; /**< Stereo camera parameters for left (L) camera*/
-    cv::Mat KR_, PR_, RR_; /**< Stereo camera parameters for right (R) camera*/
+    std::vector<Landmark> lmrksC_;                                  /**< current landmarks*/
+    std::vector<Landmark> map;                                      /**< map of landmarks*/
 
-    int downsampling_; /**< Downsampling factor for the input images*/
-    int maxFeatures_; /**< Maximum number of features to find in each bucket*/
+    cv::Mat KL_, PL_, RL_;                                          /**< Stereo camera parameters for left (L) camera*/
+    cv::Mat KR_, PR_, RR_;                                          /**< Stereo camera parameters for right (R) camera*/
 
-    cv::Mat mapL1_, mapL2_, mapR1_, mapR2_; /**< Stereo rectification mappings*/
+    int downsampling_;                                              /**< Downsampling factor for the input images*/
+    int maxFeatures_;                                               /**< Maximum number of features to find in each bucket*/
+
+    cv::Mat mapL1_, mapL2_, mapR1_, mapR2_;                         /**< Stereo rectification mappings*/
     
-    // double calibTime_;      /**< IMU calibration time*/
+    int numFeatures_;                                               /**< number of features in the map*/                    
 
-    double deltaT_;                                /**< time elapsed since last EKF iteration*/
-    // double T2_;                                 /**< Squared IMU KF prediction period*/
-    // double rx_, ry_, rz_, gbx_, gby_, gbz_;     /**< IMU KF state vector x = [rx, ry, rz, gbx, gby, gbz]*/
-    // Eigen::MatrixXd P_;                         /**< IMU KF matrix*/
-	
-    double biaDev_;
-    double biaTh_;
+    double deltaT_;                                                 /**< time elapsed since last EKF iteration*/
 };
 
 #endif

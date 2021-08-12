@@ -106,13 +106,34 @@ public:
             calibInit(leftInfo, rightInfo);
         }
 
-        numFeatures_ = 0;
+        numLandmarks_ = 0;
 
         init_ = true;
         ROS_INFO("SLAM EKF INITIALIZED");
 
         return true;
-	}	
+	}
+
+    /** @brief generate landmark with global location for the map using the current observed landmarks
+     * @param[in] landmarkC current observed landmark
+     * @return landmarkM landmark for storing in the map
+     */
+    Landmark mapLandmarkCreator(Landmark& landmarkC) {
+
+        // get relative landmark location
+        cv::Point3f rp;
+        rp.x = landmarkC.getLocRel().x;
+        rp.y = landmarkC.getLocRel().y;
+        rp.z = landmarkC.getLocRel().z;
+
+        // set global landmark location as gp = relative location + predicted pose
+        cv::Point3f gp;
+        gp.x = rp.x + SV_[0];
+        gp.y = rp.y + SV_[1];
+        gp.z = rp.z + SV_[2];
+
+        return Landmark(landmarkC.getKpt(), rp, gp); 
+    }
 
     /** @brief Distribute maxFeatures_ among all buckets.
      * We are considering 6 buckets organized in 2 rows and 3 columns.
@@ -225,24 +246,13 @@ public:
         for(std::vector<Landmark>::iterator lm = lmrksC_.begin(); lm != lmrksC_.end(); ++lm) {
 
             if(map.size() == 0) {
-                // get relative landmark location
-                cv::Point3f rp;
-                rp.x = (*lm).getLocRel().x;
-                rp.y = (*lm).getLocRel().y;
-                rp.z = (*lm).getLocRel().z;
-
-                // set global landmark location as gp = relative location + predicted pose;
-                cv::Point3f gp;
-                gp.x = rp.x + SV_[0];
-                gp.y = rp.y + SV_[1];
-                gp.z = rp.z + SV_[2];
-
                 // generate landmark and add it to the map
-                Landmark nlm = Landmark((*lm).getKpt(), rp, gp);      
-
-                map.push_back((nlm));
+                Landmark nlm = mapLandmarkCreator((*lm));
+                map.push_back(nlm);
+                numLandmarks_ = 1;
 
             } else {
+    
                 ROS_INFO_STREAM("Yeetus(" << map[0].getLocGlob() << ")");
             }
         }
@@ -645,7 +655,7 @@ public:
 
     cv::Mat mapL1_, mapL2_, mapR1_, mapR2_;                         /**< Stereo rectification mappings*/
     
-    int numFeatures_;                                               /**< number of features in the map*/                    
+    int numLandmarks_;                                               /**< number of landmarks in the map*/                    
 
     double deltaT_;                                                 /**< time elapsed since last EKF iteration*/
 };

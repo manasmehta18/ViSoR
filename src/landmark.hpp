@@ -31,16 +31,34 @@ public:
         return this->kpt;
     }
 
+    /** @brief set the keypoint for the current landmark
+     */
+    void setKpt(cv::KeyPoint kpt) {
+        this->kpt = kpt;
+    }
+
     /** @brief get the relative 3D location of the current landmark
      */
     cv::Point3f getLocRel(void) {
         return this->locRel;
     }
 
+    /** @brief set the relative 3D location of the current landmark
+     */
+    void setLocRel(cv::Point3f locRel) {
+        this->locRel = locRel;
+    }
+
     /** @brief get the global 3D location of the current landmark
      */
     cv::Point3f getLocGlob(void) {
         return this->locGlob;
+    }
+
+    /** @brief set the global 3D location of the current landmark
+     */
+    void setLocGlob(cv::Point3f locGlob) {
+        this->locGlob = locGlob;
     }
 
 private:

@@ -237,8 +237,8 @@ public:
         // update covariance matrix
         CM_ += Q_;
 
-        // ROS_INFO_STREAM("State Vector: new pose (" << SV_[0] << "," << SV_[1] << "," << SV_[2] << ","<< ")");
-        ROS_INFO_STREAM("CM(" << CM_(0,0) << "," << CM_(0,313) << "," << CM_(313,313) << "," << CM_(313,0) << ")");
+        ROS_INFO_STREAM("State Vector: new pose (" << SV_[0] << "," << SV_[1] << "," << SV_[2] << ","<< ")");
+        // ROS_INFO_STREAM("CM(" << CM_(0,0) << "," << CM_(0,313) << "," << CM_(313,313) << "," << CM_(313,0) << ")");
 
         return true;
 	}
@@ -257,7 +257,7 @@ public:
             Landmark nlm = mapLandmarkCreator((*lmc));
 
             // if map is empty, add the first landmark
-            if(map.size() == 0) {
+            if(numLandmarks_ == 0) {
 
                 // add landmark to the map
                 map.push_back(nlm);
@@ -337,7 +337,7 @@ public:
                 Eigen::MatrixXd H;
 
                 // kalman gain
-                double K = 0.0000001;
+                double K = 0.0;
 
 
                 // SV update - pose
@@ -473,7 +473,19 @@ public:
             // send corrected pose to viodom node
             tf::Transform updatedOdomC;
 
-            updatedOdomC = odomTemp;
+            tf::Quaternion qUpdated;
+            qUpdated.setW(SV_[3]);
+            qUpdated.setX(SV_[4]);
+            qUpdated.setY(SV_[5]);
+            qUpdated.setZ(SV_[6]);
+            tf::Vector3 pUpdated;
+            pUpdated.setX(SV_[0]);
+            pUpdated.setY(SV_[1]);
+            pUpdated.setZ(SV_[2]);
+
+            updatedOdomC.setRotation(qUpdated);
+            updatedOdomC.setOrigin(pUpdated);
+
             publishSlamTf(updatedOdomC);
 
         } else {

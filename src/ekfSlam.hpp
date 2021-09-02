@@ -261,9 +261,13 @@ public:
 
                 // add landmark to the map
                 map.push_back(nlm);
-                numLandmarks_ = 1;
+                
+                // add landmark to state vector
+                SV_[14] = nlm.getLocGlob().x;
+                SV_[15] = nlm.getLocGlob().y;
+                SV_[16] = nlm.getLocGlob().z;
 
-                // TODO: add to state vector as well
+                numLandmarks_ = 1;
 
             } else {
 
@@ -295,24 +299,114 @@ public:
 
                     lmIndex = minIndex;
 
-                    // TODO: global loc of nlm = global loc of minLm
+                    cv::Point3f minLmGL;
+                    minLmGL.x = minLm.getLocGlob().x;
+                    minLmGL.y = minLm.getLocGlob().y;
+                    minLmGL.z = minLm.getLocGlob().z;
 
-                    //TODO: update location of current landmark with global location from the map
+                    // update global location of current landmark with global location from the map
+                    nlm.setLocGlob(minLmGL);
 
                 } else {
 
                     // unobserved landmark - add to the map
                     map.push_back(nlm);
                     lmIndex = numLandmarks_;
+
+                    // add landmark to the state vector
+                    SV_[lmIndex * 3 + 14] = nlm.getLocGlob().x;
+                    SV_[(lmIndex * 3 + 14) + 1] = nlm.getLocGlob().y;
+                    SV_[(lmIndex * 3 + 14) + 2] = nlm.getLocGlob().z;
+
                     numLandmarks_ += 1;
                 }
     
                 ROS_INFO_STREAM("Yeetus(" << numLandmarks_ << ")");
 
                 // lmIndex = location of current landmark in the map
-                // lmIndex * 3 = location of current landmark in SV and CM 
+                // lmIndex * 3 + 14 = location of current landmark in SV and CM
+                
+                // observation model
+                cv::Point3f h;
 
-                // TODO: observation model, kalman gain, and CV, CM updates
+                h.x = nlm.getLocGlob().x - SV_[0];
+                h.y = nlm.getLocGlob().y - SV_[1];
+                h.z = nlm.getLocGlob().z - SV_[2];
+
+                // observation jacobian
+                Eigen::MatrixXd H;
+
+                // kalman gain
+                double K = 0.0000001;
+
+
+                // SV update - pose
+                SV_[0] +=  K * (nlm.getLocGlob().x - h.x);
+                SV_[1] +=  K * (nlm.getLocGlob().y - h.y);
+                SV_[2] +=  K * (nlm.getLocGlob().y - h.y);
+
+                SV_[3] +=  K * (nlm.getLocGlob().y - h.y);
+                SV_[4] +=  K * (nlm.getLocGlob().y - h.y);
+                SV_[5] +=  K * (nlm.getLocGlob().y - h.y);
+                SV_[6] +=  K * (nlm.getLocGlob().y - h.y);
+
+                SV_[7] +=  K * (nlm.getLocGlob().y - h.y);
+                SV_[8] +=  K * (nlm.getLocGlob().y - h.y);
+                SV_[9] +=  K * (nlm.getLocGlob().y - h.y);
+
+                SV_[10] +=  K * (nlm.getLocGlob().y - h.y);
+                SV_[11] +=  K * (nlm.getLocGlob().y - h.y);
+                SV_[12] +=  K * (nlm.getLocGlob().y - h.y);
+                SV_[13] +=  K * (nlm.getLocGlob().y - h.y);
+
+                // SV update - landmark
+                SV_[lmIndex * 3 + 14] += K * (nlm.getLocGlob().x - h.x);
+                SV_[(lmIndex * 3 + 14) + 1] += K * (nlm.getLocGlob().x - h.x);
+                SV_[(lmIndex * 3 + 14) + 2] += K * (nlm.getLocGlob().x - h.x);
+
+
+                // CM update
+                Eigen::MatrixXd lQ;
+                lQ.setIdentity(314, 314);
+                lQ.setZero();
+
+                // temporary bias matrices
+                Eigen::MatrixXd Bp, Bl, Bpl, Blp, B1, B2;
+                Bp.setIdentity(14, 14);
+                Bl.setIdentity(3, 3);
+                Bpl.setIdentity(3, 14);
+                Blp.setIdentity(14, 3);
+                B1.setIdentity(3, 314);
+                B2.setIdentity(314, 3);
+
+                // add random bias to the bias matrices
+                std::srand(std::time(0));
+
+                for(int i = 0; i < 14; i++) {
+                    for(int j = 0; j < 14; j++) {
+                        Bp(i,j) = std::rand() % 10 + 1;
+
+                        if (i < 3 && j < 3) {
+                            Bl(j,i) = std::rand() % 100 + 1;
+                        }
+                    }
+                }
+
+                for(int i = 0; i < 3; i++) {
+                    for(int j = 0; j < 14; j++) {
+                        Bpl(i,j) = std::rand() % 100 + 1;
+                        Blp(j,i) = std::rand() % 100 + 1;
+                    }
+                }
+
+                // add bias to bias matrix lQ
+                lQ.block<14,14>(0,0) = Bp;
+                lQ.block<3,14>(lmIndex * 3 + 14,0) = Bpl;
+                lQ.block<14,3>(0,lmIndex * 3 + 14) = Blp;
+                lQ.block<3,3>(lmIndex * 3 + 14,lmIndex * 3 + 14) = Bl;
+
+                // update covariance matrix
+                CM_ -= lQ;
             }
         }
 

@@ -79,6 +79,14 @@ public:
 
         deltaT_ = 1.0;
         simTh_ = 1.0;
+
+        // Init cam2baselink TFs
+        Tcam22imu0_.setOrigin(tf::Vector3(-0.039, 0.0089, 0.0009));
+        Tcam22imu0_.setRotation(tf::Quaternion(0.00065, 0.0014, -0.0031, 0.9999));
+        Timu02base_.setOrigin(tf::Vector3(0.12, 0.0, -0.06));
+        tf::Quaternion q_imu0;
+        q_imu0.setRPY(-1.96, 0.0, -1.57);
+        Timu02base_.setRotation(q_imu0);
 	}
 
 
@@ -712,6 +720,24 @@ public:
         return true;
     }
 
+    /** @brief Convert odometry from camera frame to the robot base_link frame
+     * @param odomC Odometry transform in camera frame
+     * @return Odometry transform in the robot base_link frame
+     */
+    tf::Transform camera2baselink(const tf::Transform& odomC) {
+        tf::Transform odom = Timu02base_ * Tcam22imu0_ * odomC * Tcam22imu0_.inverse() * Timu02base_.inverse();
+        return odom;
+    }
+
+    /** @brief Convert odometry from the robot base_link frame to camera frame
+     * @param odom Odometry transform in base_link frame
+     * @return Odometry transform in camera frame
+     */
+    tf::Transform baselink2camera(const tf::Transform& odom) {
+        tf::Transform odomC = Tcam22imu0_.inverse() * Timu02base_.inverse() * odom * Timu02base_ * Tcam22imu0_;
+        return odomC;
+    }
+
     /** @brief Camera calibration 
      * @param leftInfo Left camera calibration data
      * @param rightInfo Right camera calibration data
@@ -825,6 +851,8 @@ public:
 
     double deltaT_;                                                 /**< time elapsed since last EKF iteration*/
     double simTh_;                                                  /**< similarity threshold for landmark global locations*/
+
+    tf::Transform Tcam22imu0_, Timu02base_;                         /**< Auxiliary transforms between camera and base_link frames*/
 };
 
 #endif

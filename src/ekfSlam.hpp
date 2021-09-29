@@ -9,6 +9,7 @@
 #ifndef __EKFSLAM_H__
 #define __EKFSLAM_H__
 
+#include <tf_conversions/tf_eigen.h>
 #include <Eigen/Core>
 #include <Eigen/Dense>
 #include <vector>
@@ -61,10 +62,6 @@ public:
 
         fDetector_ = cv::FastFeatureDetector::create(/*5*/);
         fExtractor_ = cv::xfeatures2d::BriefDescriptorExtractor::create(16 /*32*/);
-
-		// EKF parameters
-        // biaDev_ = 0.00001;//0.000001;
-        // biaTh_ = 0.005; //0.001;
 
         // initialize hyperparameters 
         downsampling_ = 2;
@@ -220,6 +217,54 @@ public:
         
         // Gt = g(ct)
         // motion jacobian
+        Eigen::MatrixXd Gt;
+        Gt.setIdentity(14, 16);
+        Gt.setZero();
+
+        // (0,0) jacobian = r/r
+        Eigen::MatrixXd tempI4;
+        tempI4.setIdentity(4, 4);
+
+        Gt.block<4,4>(0,0) = tempI4;
+
+        // jacobians for (1,0) = q/r, (2,0) = v/r, (3,0) = w/r are 0
+
+        // jacobian for (0,1) = r/q
+        Eigen::Matrix3d qkk;
+        Eigen::Vector3d rkk;
+
+        tf::matrixTFToEigen(dist.getBasis(), qkk);
+        tf::vectorTFToEigen(dist.getOrigin(), rkk);
+
+        Eigen::MatrixXd hkk;
+        hkk.setIdentity(4, 4);
+        hkk.block<3, 3>(0,0) = qkk;
+        hkk.block<3, 1>(0,3) = rkk * (-1);
+
+        Gt.block<4,4>(0,4) = hkk;
+
+        // jacobian for (1,1) = q/q
+        Gt.block<3,3>(4,4) = qkk;
+
+        // jacobian for (2,1) = v/q
+        Gt.block<4,4>(7,4) = hkk / deltaT_;
+
+        // jacobian for (3,1) = w/q = 0
+
+        // jacobian for (0,2) = r/v - TODO
+
+
+
+
+
+
+
+
+
+        // tranform matrix for jacobian-covariance multiplication
+        Eigen::MatrixXd tr;
+        tr.setIdentity(314, 314);
+        tr.setZero();
 
         // temporary bias matrices
         Eigen::MatrixXd B1, B2;

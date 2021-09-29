@@ -11,6 +11,7 @@ find_package(catkin REQUIRED COMPONENTS
   image_geometry
   cv_bridge
   tf
+  tf_conversions
   cmake_modules
   message_generation
 )

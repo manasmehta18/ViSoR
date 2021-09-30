@@ -314,6 +314,7 @@ public:
         // tranform matrix for jacobian-covariance multiplication
         Eigen::MatrixXd tr;
         tr.setIdentity(314, 314);
+        tr.block<14,16>(0,0) = Gt;
 
         // temporary bias matrices
         Eigen::MatrixXd B1, B2;
@@ -337,7 +338,7 @@ public:
         // ROS_INFO_STREAM("CM (" << CM_(0,0) << "," << CM_(0,313) << "," << CM_(313,313) << "," << CM_(313,0) << ")");
 
         // update covariance matrix
-        CM_ += Q_;
+        CM_ =  tr * CM_ * tr.transpose() + Q_;
 
         ROS_INFO_STREAM("State Vector: new pose (" << SV_[0] << "," << SV_[1] << "," << SV_[2] << ","<< ")");
         // ROS_INFO_STREAM("CM(" << CM_(0,0) << "," << CM_(0,313) << "," << CM_(313,313) << "," << CM_(313,0) << ")");

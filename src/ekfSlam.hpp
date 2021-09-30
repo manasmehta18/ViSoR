@@ -192,6 +192,19 @@ public:
         ros::Time timeC = ros::Time::now();
         deltaT_ = (timeC - timeP_).toSec();
         timeP_ = timeC;
+
+        tf::Quaternion qPrev;
+        qPrev.setW(SV_[3]);
+        qPrev.setX(SV_[4]);
+        qPrev.setY(SV_[5]);
+        qPrev.setZ(SV_[6]);
+        tf::Vector3 pPrev;
+        pPrev.setX(SV_[0]);
+        pPrev.setY(SV_[1]);
+        pPrev.setZ(SV_[2]);
+
+        poseP_.setRotation(qPrev);
+        poseP_.setOrigin(pPrev);
         
         // pose translation vector
         SV_[0] = pose.getOrigin().getX();
@@ -251,20 +264,56 @@ public:
 
         // jacobian for (3,1) = w/q = 0
 
-        // jacobian for (0,2) = r/v - TODO
+        // jacobian for (0,2) = r/v
+        Gt.block<4,4>(0,8) = tempI4 * deltaT_;
 
+        // jacobian for (1,2) = q/v
+        Eigen::MatrixXd diagr;
+        diagr.setIdentity(3, 3);
+        diagr(0,0) = dist.getOrigin().getX();
+        diagr(1,1) = dist.getOrigin().getY();
+        diagr(2,2) = dist.getOrigin().getZ();
 
+        Gt.block<3,3>(4,8) = diagr * deltaT_;
 
+        // jacobian for (2,2) = v/v
+        Gt.block<4,4>(7,8) = tempI4;
 
+        // jacobian for (3,2) = w/v
+        Eigen::Matrix3d qOld;
 
+        tf::matrixTFToEigen(poseP_.getBasis(), qOld);
 
+        Eigen::MatrixXd holdkk;
+        holdkk.setZero(3, 4);
+        holdkk.block<3, 3>(0,0) = qOld.inverse();
+        holdkk.block<3, 1>(0,3) = rkk;
 
+        Gt.block<3,4>(11,8) = holdkk;
 
+        // jacobian for (0,3) = r/w
+        Eigen::MatrixXd hokkT;
+        hokkT.setIdentity(4, 4);
+        hokkT.block<3, 3>(0,0) = qOld;
+        hokkT.block<3, 1>(0,3) = rkk * (-1);
+
+        Gt.block<4,4>(0,12) = hokkT * deltaT_;
+
+        // jacobian for (1,3) = q/w
+        Gt.block<3,3>(4,12) = qOld * deltaT_;
+
+        // jacobian for (2,3) = v/w
+        Gt.block<4,4>(7,12) = hokkT;
+
+        // jacobian for (3,3) = w/w
+        Eigen::MatrixXd tempI3;
+        tempI3.setIdentity(3, 3);
+
+        Gt.block<3,3>(11,12) = tempI3;
 
         // tranform matrix for jacobian-covariance multiplication
         Eigen::MatrixXd tr;
         tr.setIdentity(314, 314);
-        tr.setZero();
 
         // temporary bias matrices
         Eigen::MatrixXd B1, B2;
@@ -868,6 +917,7 @@ public:
     Eigen::MatrixXd CM_;                                            /**< Covariance matrix*/
     Eigen::MatrixXd Q_;                                             /**< Motion Bias Covariance matrix*/
     Eigen::MatrixXd R_;                                             /**< Observation Bias Covariance matrix*/
+    tf::Transform poseP_;                                           /**< Previous pose*/
 
     bool init_;                                                     /**< Flag indicating if EKF has been initialized*/
     bool pred_;                                                     /**< Flag indicating if prediction step has been done*/

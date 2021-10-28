@@ -311,7 +311,7 @@ public:
 
         Gt.block<3,3>(11,12) = tempI3;
 
-        // tranform matrix for jacobian-covariance multiplication
+        // transform matrix for jacobian-covariance multiplication
         Eigen::MatrixXd tr;
         tr.setIdentity(314, 314);
         tr.block<14,16>(0,0) = Gt;
@@ -416,13 +416,13 @@ public:
                     map.push_back(nlm);
                     lmIndex = numLandmarks_;
 
-                    // add landmark to the state vector
-                    SV_[lmIndex * 3 + 14] = nlm.getLocGlob().x;
-                    SV_[(lmIndex * 3 + 14) + 1] = nlm.getLocGlob().y;
-                    SV_[(lmIndex * 3 + 14) + 2] = nlm.getLocGlob().z;
-
                     numLandmarks_ += 1;
                 }
+
+                // add landmark to the state vector
+                SV_[lmIndex * 3 + 14] = nlm.getLocGlob().x;
+                SV_[(lmIndex * 3 + 14) + 1] = nlm.getLocGlob().y;
+                SV_[(lmIndex * 3 + 14) + 2] = nlm.getLocGlob().z;
     
                 ROS_INFO_STREAM("Yeetus(" << numLandmarks_ << ")");
 
@@ -437,79 +437,32 @@ public:
                 h.z = nlm.getLocGlob().z - SV_[2];
 
                 // observation jacobian
-                Eigen::MatrixXd H;
+                Eigen::MatrixXd H, Hb, Kg, Bi, Qinv, I, SVM, HV;
+                H.setIdentity(3,3);
+                Bi.setZero(314,314);
+                Hb.setZero(314,314);
+                I.setIdentity(314,314);
+                SVM.setZero(314,1);
+                HV.setZero(314,1);
+
+                HV(0,0) = h.x;
+                HV(1,0) = h.y;
+                HV(2,0) = h.z;
+
+                Qinv = (Hb * CM_ * Hb.transpose()) + Bi;
 
                 // kalman gain
-                double K = 0.0;
+                Kg = CM_ * Hb.transpose() * Qinv.inverse();
 
+                // state vector update
+                SVM += Kg * HV;
 
-                // SV update - pose
-                SV_[0] +=  K * (nlm.getLocGlob().x - h.x);
-                SV_[1] +=  K * (nlm.getLocGlob().y - h.y);
-                SV_[2] +=  K * (nlm.getLocGlob().y - h.y);
-
-                SV_[3] +=  K * (nlm.getLocGlob().y - h.y);
-                SV_[4] +=  K * (nlm.getLocGlob().y - h.y);
-                SV_[5] +=  K * (nlm.getLocGlob().y - h.y);
-                SV_[6] +=  K * (nlm.getLocGlob().y - h.y);
-
-                SV_[7] +=  K * (nlm.getLocGlob().y - h.y);
-                SV_[8] +=  K * (nlm.getLocGlob().y - h.y);
-                SV_[9] +=  K * (nlm.getLocGlob().y - h.y);
-
-                SV_[10] +=  K * (nlm.getLocGlob().y - h.y);
-                SV_[11] +=  K * (nlm.getLocGlob().y - h.y);
-                SV_[12] +=  K * (nlm.getLocGlob().y - h.y);
-                SV_[13] +=  K * (nlm.getLocGlob().y - h.y);
-
-                // SV update - landmark
-                SV_[lmIndex * 3 + 14] += K * (nlm.getLocGlob().x - h.x);
-                SV_[(lmIndex * 3 + 14) + 1] += K * (nlm.getLocGlob().x - h.x);
-                SV_[(lmIndex * 3 + 14) + 2] += K * (nlm.getLocGlob().x - h.x);
-
-
-                // CM update
-                Eigen::MatrixXd lQ;
-                lQ.setIdentity(314, 314);
-                lQ.setZero();
-
-                // temporary bias matrices
-                Eigen::MatrixXd Bp, Bl, Bpl, Blp, B1, B2;
-                Bp.setIdentity(14, 14);
-                Bl.setIdentity(3, 3);
-                Bpl.setIdentity(3, 14);
-                Blp.setIdentity(14, 3);
-                B1.setIdentity(3, 314);
-                B2.setIdentity(314, 3);
-
-                // add random bias to the bias matrices
-                std::srand(std::time(0));
-
-                for(int i = 0; i < 14; i++) {
-                    for(int j = 0; j < 14; j++) {
-                        Bp(i,j) = std::rand() % 10 + 1;
-
-                        if (i < 3 && j < 3) {
-                            Bl(j,i) = std::rand() % 100 + 1;
-                        }
-                    }
+                for(int i = 0; i < 314; i++) {
+                    SV_[i] = SVM(i,0);
                 }
 
-                for(int i = 0; i < 3; i++) {
-                    for(int j = 0; j < 14; j++) {
-                        Bpl(i,j) = std::rand() % 100 + 1;
-                        Blp(j,i) = std::rand() % 100 + 1;
-                    }
-                }
-
-                // add bias to bias matrix lQ
-                lQ.block<14,14>(0,0) = Bp;
-                lQ.block<3,14>(lmIndex * 3 + 14,0) = Bpl;
-                lQ.block<14,3>(0,lmIndex * 3 + 14) = Blp;
-                lQ.block<3,3>(lmIndex * 3 + 14,lmIndex * 3 + 14) = Bl;
-
-                // update covariance matrix
-                CM_ -= lQ;
+                // covariance matrix update
+                CM_ = ( I - Kg * Hb ) * CM_;
             }
         }
 
